@@ -1,0 +1,1132 @@
+---
+title: "Effect of FUS-KI on RNA stability"
+author: "Katharina Hembach"
+date: "11/12/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(autodep = TRUE, cache = TRUE, dev = "png",
+                      dev.args = list(png = list(type = "cairo")), warnings = FALSE)
+```
+
+#### Load libraries
+```{r load-libs, message = FALSE}
+library(here)
+library(dplyr)
+library(ComplexHeatmap)
+library(eulerr)
+library(ggplot2)
+library(stringr)
+library(ggrepel)
+library(rtracklayer)
+library(viridis)
+library(tibble)
+library(biomaRt)
+library(limma)
+library(cowplot)
+library(factoextra)
+library(NbClust)
+library(cluster)
+```
+
+
+## Load data
+
+```{r file-names}
+se <- here("output", "outputR", "edgeR_dge.rds")
+
+## Manually filtered list of target genes (genes on the wrong strand are 
+## removed)p; results from RNA-seq of 6months old FUS-KI and WT mice is 
+## included in the table
+fus_targets <- "/home/Shared_taupo/data/seq/sonu_CLIPseq/clip_March2018/analysis/deduplicated/MA_plot_selection/top_peaks_loess_adjM_pValue_1e-05_gene_anno_manually_filtered_cluster_location_classified_RNAseq_6m.txt"
+fus_peaks_bed <- "/home/Shared_taupo/data/seq/sonu_CLIPseq/clip_March2018/analysis/deduplicated/MA_plot_selection/selected_peaks/selected_peaks_SNS_pValue_1e-05.bed"
+## annotated fus peaks
+fus_peaks_rds <- "/home/Shared_taupo/data/seq/sonu_CLIPseq/clip_March2018/Rmd/rds/loess_peaks_sns_pValue_1e-05.RDS"
+
+gtf_file <- "/home/Shared_taupo/data/annotation/Mouse/Ensembl_GRCm38.90/gtf/Mus_musculus.GRCm38.90.gtf"
+fig_dir <- here("analysis", "figures")
+```
+
+
+```{r load-data, dependson = "file-names"}
+se <- readRDS(se)
+## List of SummarizedExperiment objects (gene/transcript level)
+se
+## Get gene-level SummarizedExperiment object
+sg <- se$sg
+metadata <- colData(sg)
+##log2 counts per million
+logcpms <- assay(sg, "logcpm")
+
+targets <- read.table(fus_targets, header = TRUE)
+```
+
+# EdgeR results for the four tested contrasts
+
+We tested for differences in gene expression between the KI and the WT samples per time points. There are four timepoints: 0, 8, 12 and 24 hours.
+The edgeR results are stored in the `rowData` slot of the `sg` object. We keep all protein coding genes.
+
+```{r get-edgeR-res}
+rd <- rowData(sg)
+contrasts <- c("groupKI_0h-groupWT_0h", "groupKI_8h-groupWT_8h", 
+               "groupKI_12h-groupWT_12h", "groupKI_24h-groupWT_24h")
+res_all <- list("0h" = rd[,"edgeR:groupKI_0h-groupWT_0h"],
+            "8h" = rd[,"edgeR:groupKI_8h-groupWT_8h"],
+            "12h" = rd[,"edgeR:groupKI_12h-groupWT_12h"],
+            "24h" = rd[,"edgeR:groupKI_24h-groupWT_24h"])
+```
+
+We only keep the protein coding and lincRNA genes for our analysis. 
+
+```{r}
+gtf <- import(gtf_file)
+genes <- gtf[gtf$type == "gene"]
+protein_genes <- gtf[gtf$gene_biotype == "protein_coding"]
+
+## we annotate the gene biotype
+res_all <- lapply(res_all, function(x) {
+  m <- match(x$gene_id, genes$gene_id)
+  x$gene_biotype <- NA
+  x$gene_biotype[!is.na(m)] <- genes[m[!is.na(m)]]$gene_biotype
+  x
+})
+
+res_all <- lapply(res_all, function(x) {
+  x[x$gene_biotype %in% c("protein_coding", "lincRNA"),]
+})
+```
+
+
+We count the number of DE genes and overlap them with the lists of FUS targets from the CLIP-seq.
+
+```{r overlap-FUS-targets}
+res <- lapply(res_all, function(x) x %>% as.data.frame %>% 
+                dplyr::filter(FDR <= 0.05))
+lapply(res, nrow)
+## overlap the DE genes with the FUS targets
+for (i in names(res)) {
+  dat <- res[[i]]
+  dat$gene_name %in% targets$gene_name %>% table %>% print
+  print(nrow(dat))
+}
+```
+
+
+# PCA plot
+
+We use the logCPM values for PCA, because they are normalized for library size and transcript length.
+
+```{r PCA-plot}
+## Filter out all genes that were not used for the DE analysis (they are NA) and that we removed above
+keep <- !is.na(res_all[[1]]$PValue) 
+gene_ids <- res_all[[1]]$gene_id[keep]
+g <- rownames(rowData(sg)[rowData(sg)$gene_id %in% gene_ids,]) 
+logcpms_part <- logcpms[g,]
+
+
+## Since PCA can be slightly problematic with high dimensional data, we first 
+## use select only the 1000 genes showing the highest variance.
+ntop = 1000
+pvars <- rowVars(logcpms_part)
+select <- order(pvars, decreasing = TRUE)[seq_len(min(ntop, length(pvars)))]
+
+## We need genes as columns --> transpose
+pca <- prcomp(t(logcpms_part[select,]))
+
+#Determine the proportion of variance of each component
+#Proportion of variance equals (PC stdev^2) / (sum all PCs stdev^2)
+proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+proportionvariances <- round(proportionvariances, digits = 0)
+
+## PCA plot
+pca_x <- as.data.frame(pca$x) %>% tibble::rownames_to_column(var = "names") %>%
+    dplyr::full_join(data.frame(colData(sg)), by = "names")
+
+ggplotPCA <- function(dat, x = "PC1", y = "PC2", color = "group", 
+                      shape = "genotype", 
+                      color_pal = brewer.pal(4, name = "GnBu"),
+                      var_explained_x = 0, var_explained_y = 0){
+  ggplot(dat, aes_string(x = x, y = y, color = color, shape = shape)) +
+    geom_point(size = 4, alpha = 0.8) +
+    theme_bw(base_size = 18) +
+    scale_color_manual(values = color_pal) + 
+    theme(aspect.ratio = 1) + 
+    labs(x = paste0(x, "(", var_explained_x, "%)"), 
+         y = paste0(y, "(", var_explained_y, "%)"))
+}
+
+## custom colors for Magda
+pca_x$genotype <- factor(pca_x$genotype, levels = c("WT", "KI"))
+pca_x$time <- factor(pca_x$time, levels = c("0h", "8h", "12h", "24h"))
+
+p <- ggplotPCA(pca_x, x = "PC1", y = "PC2", shape = "genotype", 
+          color = "time", 
+          color_pal = inferno(4, begin = 0.2, end = 0.8, direction = -1), 
+          var_explained_x = proportionvariances[1], 
+          var_explained_y = proportionvariances[2])
+p
+
+p <- ggplotPCA(pca_x, x = "PC3", y = "PC4", shape = "genotype", 
+          color = "time", 
+          color_pal = inferno(4, begin = 0.2, end = 0.8, direction = -1), 
+          var_explained_x = proportionvariances[3], 
+          var_explained_y = proportionvariances[4])
+p
+```
+
+
+
+# Volcano plot
+
+volcano plot for each of the timepoints.
+
+```{r volcano-prep}
+## select the ones we are interested in:
+comp <- names(rowData(sg))[9:12]
+
+## Determine the maximal logFC range in all comparisons
+x_range <- 0
+y_range <- 0
+for (i in names(res_all)){
+  dat <- res_all[[i]]
+  dat <- dat[!is.na(dat$PValue),]
+  x_range<- max(x_range, max(abs(dat$logFC)))
+  y_range <- max(y_range, max(-log10(dat$FDR)))
+}
+x_range
+y_range
+```
+
+
+```{r "volcano-plot-function"}
+## Volcano plot with labeled genes (top p-value or logFC)
+ggplotVolcano <- function(dat, title, outfile, alpha = 0.8, FUS_targets = NULL, 
+                          color_targets = FALSE, gene_labels = NULL,
+                          label_top = FALSE,
+                          label_coord = 1.5, 
+                          x_range = NULL, y_range = NULL){
+
+  dat <- dat[!is.na(dat$PValue),]
+  dat$mlog10FDR <- -log10(dat$FDR)
+  df <- data.frame(logFC = dat$logFC, mlog10FDR = dat$mlog10FDR, 
+                      FDR = dat$FDR, gene = dat$gene_name)
+  
+  p <- ggplot(df, aes(x = logFC, y = mlog10FDR))
+   
+  if(is.null(FUS_targets)){
+    cols <- as.factor(ifelse(df$FDR <= 0.05, 
+                             ifelse(df$logFC > 0, "FDR \u2264 0.05 & logFC > 0",  
+                                    "FDR \u2264 0.05 & logFC < 0"), "FDR > 0.05"))
+    # repel <- df %>% filter(FDR <= 0.05) %>% arrange(desc(mlog10FDR))
+    p <- p + geom_point(alpha = alpha, aes(color = cols)) +
+      scale_color_manual(values = c("FDR \u2264 0.05 & logFC > 0" = "#882255", 
+                                    "FDR \u2264 0.05 & logFC < 0" = "#117733",
+                                    "FDR > 0.05" = "darkgrey"))
+  } else {
+    # repel <- df %>% filter(gene %in% FUS_targets) %>% 
+    #   arrange(desc(mlog10FDR))
+    if (color_targets){
+     df$cols <- as.factor(ifelse(df$gene %in% FUS_targets, "FUS target",
+                              ifelse(df$FDR <= 0.05, 
+                                     ifelse(df$logFC > 0, "FDR \u2264 0.05 & logFC > 0",  
+                                            "FDR \u2264 0.05 & logFC < 0"), "FDR > 0.05")))
+      p <- p + geom_point(data = df %>% dplyr::arrange(cols), 
+                          aes(color = cols), alpha = alpha) + 
+        scale_color_manual(values = c("FUS target" = "steelblue3", 
+                                      "FDR > 0.05" = "darkgrey", 
+                                      "FDR \u2264 0.05 & logFC > 0" = "#882255", 
+                                      "FDR \u2264 0.05 & logFC < 0" = "#117733"))
+     } else{
+      p <- p + geom_point(data = df %>% filter(!gene %in% FUS_targets), 
+                   aes(color = "darkgrey"), alpha = alpha) + 
+        geom_point(data = df %>% filter(gene %in% FUS_targets),
+               aes(color = "red"), alpha = alpha) +
+      scale_color_manual(name = "FUS targets", labels = c("FALSE", "TRUE"), 
+                         values = c("darkgrey", "red"))
+    }
+  }
+  p <- p + ggtitle(title) +
+    theme_bw() +
+    theme(text = element_text(size = 16)) + 
+    ylab("-log10(FDR)") 
+  
+  if(!is.null(gene_labels)){
+    repel <- df %>% filter(gene %in% gene_labels) %>% 
+      arrange(desc(mlog10FDR))
+    p <- p + geom_text_repel(data = repel %>% filter(logFC > 0), 
+                           aes(label = gene), xlim = c(label_coord, NA), 
+                           segment.color = "grey30", show.legend = FALSE) +
+      geom_text_repel(data = repel %>% filter(logFC < 0), 
+                      aes(label = gene), xlim = c(NA, -label_coord), 
+                      segment.color = "grey30", show.legend = FALSE)
+  } else if (label_top){
+    ## top FDR
+    repel <- df %>% filter(FDR <= 0.05) %>% arrange(desc(mlog10FDR)) %>% 
+      dplyr::slice(1:10)
+    ## top logFC
+    repel <- df %>% arrange(desc((logFC))) %>%
+      dplyr::slice(1:10) %>% rbind(repel)
+    repel <- df %>% arrange(logFC) %>%
+      dplyr::slice(1:10) %>% rbind(repel)
+    repel <- unique(repel)
+    
+    p <- p + geom_text_repel(data = repel %>% filter(logFC > 0), 
+                             aes(label = gene), xlim = c(label_coord, NA), 
+                             segment.color = "grey30", show.legend = FALSE) +
+      geom_text_repel(data = repel %>% filter(logFC < 0), 
+                      aes(label = gene), xlim = c(NA, -label_coord), 
+                      segment.color = "grey30", show.legend = FALSE)
+  }
+    
+  ## x and y-axis range
+  if(!is.null(x_range) & !is.null(y_range)){
+      p <- p + coord_cartesian(xlim = c(-x_range, x_range), ylim = c(0, y_range))
+  }
+  
+  ## draw line at FDR cutoff and end x = 0 
+  p <- p + theme(aspect.ratio = 1) + 
+    geom_hline(yintercept = -log10(0.05), linetype="dashed", color = "black")  +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+  
+  ## remove legend title
+  p <- p + theme(legend.title=element_blank()) + xlab("log2 fold change")
+   
+  print(p)
+  ggsave(filename = outfile, plot = p, width = 8, height = 6, type = "cairo", 
+         dpi = 500)
+}
+```
+
+```{r volcano-plots1,  warning = TRUE}
+for (i in names(res_all)){  
+  file_name <- file.path(fig_dir, paste0("volcano_", i, ".png"))
+  ggplotVolcano(res_all[[i]], title = i, file_name, label_coord = 2.5, 
+                x_range = x_range, y_range = y_range)
+}
+```
+
+Label the top 15 genes with strongest logFC.
+```{r volcano-top-label}
+for (i in names(res_all)){  
+  file_name <- file.path(fig_dir, paste0("volcano_", i, "_top_label.png"))
+  ggplotVolcano(res_all[[i]], title = i, file_name, label_coord = 2.5, 
+                x_range = x_range, y_range = y_range, label_top = TRUE)
+}
+```
+
+
+## Volcano plot with labeled FUS target genes
+
+```{r volcano-FUS-targets}
+for (i in names(res_all)){  ## total
+  file_name <- file.path(fig_dir, paste0("volcano_", i, "_FUS_targets.png"))
+  ggplotVolcano(res_all[[i]], title = i, file_name, 
+                FUS_targets = targets$gene_name, color_targets = TRUE, 
+                alpha = 0.8,  label_coord = 2.5,  x_range = x_range, 
+                y_range = y_range)
+}
+```
+
+
+## Genes with strongest logFC
+
+What are the DE genes with the highest logFC per timepoint?
+
+```{r strongest-logFC}
+lapply(res, function(x){
+  x %>% as.data.frame %>% dplyr::arrange(desc(abs(logFC))) %>% head(n = 10)
+})
+```
+
+
+# ORA 
+
+Over representation analysis to characterize the sets of differentialy expressed genes.
+
+The background are all genes with cpm > 1 in all WT 1 replicates.
+
+```{r import-SNS-bg}
+## all genes with >= 1 CPM in all replicates per group (logcpm 0 = cpm 1)
+rna_wt <- logcpms %>% as.data.frame() %>% 
+    dplyr::select(metadata[metadata$group == "WT_0h", "names"]) %>%
+    rownames_to_column("gene_id") %>%
+    dplyr::filter(., rowSums(dplyr::select(., -gene_id) >= 0) == (ncol(.)-1)) %>%
+    tidyr::separate(gene_id, into = c("gene_id", "gene_name"), sep = "__")
+dim(rna_wt)
+
+rna_ki <- logcpms %>% as.data.frame() %>% 
+    dplyr::select(metadata[metadata$group == "KI_0h", "names"]) %>%
+    rownames_to_column("gene_id") %>%
+    dplyr::filter(., rowSums(dplyr::select(., -gene_id) >= 0) == (ncol(.)-1)) %>%
+    tidyr::separate(gene_id, into = c("gene_id", "gene_name"), sep = "__")
+dim(rna_ki)
+
+rna_bg <- c(rna_wt$gene_id, rna_ki$gene_id) %>% unique
+length(rna_bg)
+```
+
+
+```{r convert-ensembl-ID-entrez}
+## convert to Entrez IDs
+ensembl <- useMart("ensembl")
+ensembl <- useDataset("mmusculus_gene_ensembl", mart = ensembl)
+
+if (file.exists(here("Rmd", "rds", "wt_bg_entrez.rds"))) {
+  bg_wt <- readRDS(here("Rmd", "rds", "wt_bg_entrez.rds"))  
+} else{
+  ## convert to Entrez IDs
+  bg_wt <- getBM(attributes = c("ensembl_gene_id","entrezgene_id"), 
+                         values = rna_bg, mart = ensembl )
+  bg_wt <- bg_wt[bg_wt$ensembl_gene_id %in% rna_bg, ]
+  saveRDS(bg_wt, here("Rmd", "rds", "wt_bg_entrez.rds")) 
+}
+nrow(bg_wt)
+```
+
+
+```{r ORA}
+ora_res <- list()
+
+for (s in names(res)[2:4]) {
+  up <- res[[s]] %>% dplyr::filter(FDR <= 0.05 & logFC > 0) %>% pull(gene_id)
+  down <- res[[s]] %>% dplyr::filter(FDR <= 0.05 & logFC < 0) %>% pull(gene_id)
+  
+  direction <- c("up", "down")
+  gene_lists <- list(up = up, down = down)
+  for (i in direction) {
+    name <- paste0(s, "_", i)
+    ids <- gene_lists[[i]]
+    
+    if (file.exists(here("Rmd", "rds", paste0(name, "_entrez.rds")))) {
+      entrez_ids <- readRDS(here("Rmd", "rds", paste0(name, "_entrez.rds")))  
+    } else{
+      ## convert the Ensembl Gene IDs to entrez Gene IDs with Biomart
+      entrez_ids <- getBM(attributes = c("ensembl_gene_id","entrezgene_id"), 
+                   values = ids, mart = ensembl )
+      ## we only keep the genes from our initial list
+      entrez_ids <- entrez_ids[entrez_ids$ensembl_gene_id %in% ids, ]
+      saveRDS(entrez_ids, here("Rmd", "rds", paste0(name, "_entrez.rds"))) 
+    }
+    
+    ## Match gene length to bg list
+    m <- match(bg_wt$ensembl_gene_id, genes$gene_id)
+    gene_length <- width(genes)[m]
+    
+    ## GO analysis with goana using gene length as covariate
+    goana_res <- goana(de = unique(entrez_ids$entrezgene), species = "Mm", 
+                       universe = bg_wt$entrezgene, covariate = gene_length)
+    goana_res <- goana_res[order(goana_res$P.DE, decreasing = FALSE),]
+    ora_res[[name]] <- goana_res
+    
+    ## write results
+    write.table(topGO(goana_res, ontology = "CC", number = 100),
+                here("analysis", "goana", paste0(name, "_goana_CC.txt")),
+                sep = "\t", quote = FALSE)
+    write.table(topGO(goana_res, ontology = "BP", number = 100),
+                here("analysis", "goana", paste0(name, "_goana_BP.txt")),
+                sep = "\t", quote = FALSE)
+    write.table(topGO(goana_res, ontology = "MF", number = 100),
+                here("analysis", "goana", paste0(name, "_goana_MF.txt")),
+                sep = "\t", quote = FALSE)
+  }
+}
+```
+
+```{r print-ora-res}
+for (s in names(ora_res)) {
+  print(s)
+  ## What are the most enriched annotation terms?
+  print(topGO(ora_res[[s]], ontology = "CC", number = 10))
+  print(topGO(ora_res[[s]], ontology = "BP", number = 10))
+  print(topGO(ora_res[[s]], ontology = "MF", number = 10))
+}
+```
+
+
+
+# Comparison of the DE genes and the FUS targets
+
+## Upset plot
+```{r upset-plot}
+gene_list <- list("FUS targets" = targets$gene_name,
+                  "8h" = unique(res[["8h"]]$gene_name),
+                  "12h" = unique(res[["12h"]]$gene_name),
+                  "24h" = unique(res[["24h"]]$gene_name))
+comb_mat <- make_comb_mat(gene_list, mode = "distinct")
+
+UpSet(comb_mat, set_order = c("FUS targets", "8h", "12h", "24h"), 
+      c("steelblue", "#117733", "#882255")[comb_degree(comb_mat)])
+
+## add intersection size to plot
+# ht = draw(UpSet(comb_mat))
+# od = column_order(ht)
+# cs = comb_size(comb_mat)
+# decorate_annotation("intersection_size", {
+#     grid.text(cs[od], x = seq_along(cs), y = unit(cs[od], "native") + unit(2, "pt"), 
+#         default.units = "native", just = "bottom", gp = gpar(fontsize = 8))
+# })
+```
+
+
+## Venn diagrams
+```{r venn-diagram}
+## check if al gnees are unique
+lengths(gene_list)
+lapply(gene_list, function(x) length(unique(x)))
+
+
+euler_diag <- euler(gene_list, shape = "circle")
+
+eulerr_options(labels = list(fontsize = 20), 
+               quantities = list(fontsize = 20, font = 2), 
+               fills = list(alpha = 0.5),
+               padding = unit(0.6, "lines"))
+
+p <- plot(euler_diag, font=1, 
+     quantities = TRUE, edges = list(lty = 2, col = "darkgrey"),
+     alpha=0.8, lwd = 3, adjust_labels = TRUE)
+print(p)
+```
+
+## List of overlapping genes
+What are the FUS targets that are DE in the stability experiment?
+```{r olap-genes}
+res[["8h"]] %>% dplyr::filter(gene_name %in% targets$gene_name)
+res[["12h"]] %>% dplyr::filter(gene_name %in% targets$gene_name)
+res[["24h"]] %>% dplyr::filter(gene_name %in% targets$gene_name)
+```
+
+How many of them were DE in the 6 months SNS FUS-KI vs. WT RNA-seq?
+
+```{r res-tables}
+res_tables <- list("8h" = 
+  res[["8h"]] %>% dplyr::filter(gene_name %in% targets$gene_name) %>% 
+    left_join(targets, by = c("gene_id", "gene_name"), suffix = c(".stab", ".SNS")),
+  "12h" = res[["12h"]] %>% dplyr::filter(gene_name %in% targets$gene_name) %>% 
+    left_join(targets, by = c("gene_id", "gene_name"), suffix = c(".stab", ".SNS")),
+  "24h" = res[["24h"]] %>% dplyr::filter(gene_name %in% targets$gene_name) %>% 
+    left_join(targets, by = c("gene_id", "gene_name"), suffix = c(".stab", ".SNS")))
+
+## number of DE genes in SNS 6months RNA-seq
+lapply(res_tables, function(x) x$RNAseq_DE %>% table)
+
+## write the results tables to file
+for (n in names(res_tables)) {
+  write.table(res_tables[[n]], file = here("analysis", paste0(n, "_DE_stability_FUS_targets.txt")),
+              quote = FALSE, row.names = FALSE, sep = "\t")
+}
+
+## tables with all the DE genes from the stability experiment (most are not FUS targets)
+res_all_tables <- list("8h" = res[["8h"]] %>% 
+left_join(targets, by = c("gene_id", "gene_name"), suffix = c(".stab", ".SNS")),
+                       "12h" = res[["12h"]] %>% 
+left_join(targets, by = c("gene_id", "gene_name"), suffix = c(".stab", ".SNS")),
+                       "24h" = res[["24h"]] %>% 
+left_join(targets, by = c("gene_id", "gene_name"), suffix = c(".stab", ".SNS")))
+
+## write the results tables to file
+for (n in names(res_all_tables)) {
+  write.table(res_all_tables[[n]], file = here("analysis", paste0(n, "_DE_stability.txt")),
+              quote = FALSE, row.names = FALSE, sep = "\t")
+}
+```
+
+Is the change in expression in the stability experiment the same as in the RNA-seq? We look at the logFC in the SNS RNA-seq and the stability RNA-seq.
+
+```{r logFC-comparison-RNAseq}
+for (n in names(res_tables)) {
+  p <- ggplot(res_tables[[n]], aes(x = logFC.SNS,  y = logFC.stab)) + 
+    geom_point(alpha = 0.8) + 
+    theme_bw() + ggtitle(n)
+  print(p)
+}
+```
+
+
+
+# RNA stability over time {.tabset}
+
+For all of the FUS targets, we plot the gene expression over all time points and genotypes.
+
+```{r timeline-gene-expression, results = "asis", fig.width = 12}
+## all genes that are DE for at least one time point (8h, 12h or 24h)
+de_genes <- unique(unlist(lapply(res, function(x) x$gene_id)))
+
+## get logcpms for all targets
+g <- rownames(rowData(sg)[rowData(sg)$gene_id %in% de_genes,]) 
+logcpms_part <- logcpms[g,]
+## transform to long format
+dat <- logcpms_part %>% as.data.frame %>% 
+  rownames_to_column("gene_id") %>% 
+  tidyr::gather(key = "sample_name", value = "logcpm", -gene_id) 
+## merge with metadata to add time and genotype
+dat <- dat %>% dplyr::left_join(metadata %>% as.data.frame, 
+                                by = c("sample_name" = "names")) %>% 
+  dplyr::rename(sample_id = sample_name)  %>% 
+  dplyr::mutate(time = factor(time, levels = c("0h", "8h", "12h", "24h")))
+dat$gene_name <- rowData(sg)[dat$gene_id, "gene_name"]
+  
+## table with the logFC per gene across all timepoints
+dat_logfc <- res_all[[1]] %>% as.data.frame %>% 
+  dplyr::select(gene_id, gene_name, logFC) %>% 
+  dplyr::rename("0h" = logFC) %>% 
+  dplyr::left_join(res_all[["8h"]] %>% as.data.frame %>% 
+                     dplyr::select(gene_id, logFC), by = "gene_id") %>%
+  dplyr::rename("8h" = logFC) %>%
+  dplyr::left_join(res_all[["12h"]] %>% as.data.frame %>% 
+                     dplyr::select(gene_id, logFC), by = "gene_id") %>%
+   dplyr::rename("12h" = logFC) %>%
+  dplyr::left_join(res_all[["24h"]] %>% as.data.frame %>%
+                     dplyr::select(gene_id, logFC), by = "gene_id") %>%
+   dplyr::rename("24h" = logFC) %>% 
+  tidyr::gather(key = "time", value = "logFC", -gene_id, - gene_name) %>%
+  dplyr::mutate(time = factor(time, levels = c("0h", "8h", "12h", "24h")))
+
+
+## plot logcpms and logFC values of all targets among the DE
+target_de <- targets$gene_name[targets$gene_id %in% de_genes]
+for (g in target_de) {
+  cat("## ", g, "\n")
+  p1 <- ggplot(dat[dat$gene_name == g,], 
+               aes(x = time, y = logcpm, color = genotype)) + 
+    geom_point(size = 3, alpha = 0.8)  +
+    theme_bw(base_size = 16)
+  p2 <- ggplot(dat_logfc[dat_logfc$gene_name == g,], aes(x = time, y = logFC)) + 
+    geom_point(size = 3, alpha = 0.8)  +
+    theme_bw(base_size = 16)
+  # lgd <- get_legend(p1)
+  p <- plot_grid(p1, p2, nrow = 1, rel_widths = c(1, 1))
+  print(p)
+  ggsave(here("analysis", "figures", "per_gene", paste0(g, "_logcpms_logFC.png")), 
+         p, width = 12, height = 6, dpi = 300, type = "cairo")
+  cat("\n\n")
+}
+```
+
+# Hierarchical clustering of DE genes
+
+We cluster the DE genes based on logFC over all time points.
+
+```{r clustering, warnings = FALSE}
+## subset to DE genes
+dat_logfc_de <- dat_logfc %>% dplyr::filter(gene_id %in% de_genes)
+## we need a table with row = observations (genes) and columns = variables (time points)
+logfc_wide <- dat_logfc_de %>% tidyr::spread(key = time, value = logFC)
+gene_wide <- logfc_wide$gene_name
+logfc_wide <- logfc_wide %>% dplyr::select(-gene_id, -gene_name) 
+head(logfc_wide)
+## distribution of logFCs per timepoint
+apply(logfc_wide, 2, summary)
+
+## compute distance metric
+## euclidean distance
+gene_dist <- dist(logfc_wide, method = "euclidean")
+as.matrix(gene_dist)[1:6, 1:6]
+## --> we don't want to use euclidean distance because we want to compare the logFC profiles and not so much the actual values
+
+## correlation based distance metric
+## the distance is 0 if two genes are perfectly correlated
+## We want to identify clusters with similar profiles, independent of their magnitude (difference in y)
+## pearson finds linear correlations, spearman is based on rank (monotonic relationship)
+gene_dist <- get_dist(logfc_wide, method = "spearman")
+round(as.matrix(gene_dist)[1:6, 1:6], 1)
+gene_dist <- get_dist(logfc_wide, method = "pearson")
+round(as.matrix(gene_dist)[1:6, 1:6], 1)
+
+
+## scatterplot of logFC of two genes 
+## change in same direction
+plot(unlist(logfc_wide[gene_wide == "Syt1",]), unlist(logfc_wide[gene_wide == "Calm3",]))
+cor(unlist(logfc_wide[gene_wide == "Syt1",]), unlist(logfc_wide[gene_wide == "Calm3",]), method = "pearson")
+cor(unlist(logfc_wide[gene_wide == "Syt1",]), unlist(logfc_wide[gene_wide == "Calm3",]), method = "spearman")
+cor(unlist(logfc_wide[gene_wide == "Syt1",]), unlist(logfc_wide[gene_wide == "Calm3",]), method = "kendall")
+logfc_wide[gene_wide %in% c("Syt1", "Calm3"),] %>% dist(method = "euclidean")
+logfc_wide[gene_wide %in% c("Syt1", "Calm3"),] %>% get_dist(method = "pearson")
+logfc_wide[gene_wide %in% c("Syt1", "Calm3"),] %>% get_dist(method = "spearman")
+logfc_wide[gene_wide %in% c("Syt1", "Calm3"),] %>% get_dist(method = "kendall")
+## change in different direction
+plot(unlist(logfc_wide[gene_wide == "Map2",]), unlist(logfc_wide[gene_wide == "Camk2a",]))
+cor(unlist(logfc_wide[gene_wide == "Map2",]), unlist(logfc_wide[gene_wide == "Camk2a",]), method = "pearson")
+cor(unlist(logfc_wide[gene_wide == "Map2",]), unlist(logfc_wide[gene_wide == "Camk2a",]), method = "spearman")
+cor(unlist(logfc_wide[gene_wide == "Map2",]), unlist(logfc_wide[gene_wide == "Camk2a",]), method = "kendall")
+logfc_wide[gene_wide %in% c("Map2", "Camk2a"),] %>% dist(method = "euclidean")
+logfc_wide[gene_wide %in% c("Map2", "Camk2a"),] %>% get_dist(method = "pearson")
+logfc_wide[gene_wide %in% c("Map2", "Camk2a"),] %>% get_dist(method = "spearman")
+logfc_wide[gene_wide %in% c("Map2", "Camk2a"),] %>% get_dist(method = "kendall")
+
+## We try spearman correlation
+## Linkage function
+hc <- hclust(d = gene_dist, method = "complete")
+
+## dendrogram, its too big for visualization
+# fviz_dend(hc, show_labels = FALSE, )
+
+## compare tree height with original distance matrix
+coph <- cophenetic(hc)
+## correlation between cophenetic and original distance
+cor(gene_dist, coph)
+
+## single linkage
+cor(gene_dist, cophenetic(hclust(gene_dist, method = "single")))
+
+## does average linkage produce a better tree?
+hc2 <- hclust(gene_dist, method = "average")
+cor(gene_dist, cophenetic(hc2))
+## yes it does
+
+for (k in 2:8){
+  hc_cut <- cutree(hc2, k = k)
+  print(fviz_cluster(object = list(data = logfc_wide, cluster = hc_cut),
+                     geom = "point", ellipse.type = "convex"))
+  print(plot(silhouette(hc_cut, gene_dist), 
+           main = paste("k = ", k), do.n.k=TRUE))
+}
+
+## cut the tree into groups
+## What is the optimal number of clusters?
+nbclust_all <- NbClust(data = logfc_wide, diss = gene_dist, distance = NULL, 
+                       min.nc = 2, max.nc = 10, method = "average")
+nbclust_all$Best.nc[1,]
+nc_all <- sort(table(nbclust_all$Best.nc[1,]), decreasing=TRUE) %>% 
+  names %>% as.numeric %>% .[1]
+## number of genes per cluster
+nbclust_all$Best.partition %>% table
+
+## visualize clusters on PCA plot
+hc_cut_all <- cutree(hc2, k = nc_all)
+hc_cut_all %>% table
+
+## plot the logFC per cluster
+for (i in 1:nc_all){
+  print(paste0("cluster ", i))
+  ## select all genes in cluster
+  p <-   dat_logfc_de %>% dplyr::filter(gene_name %in% 
+                                          gene_wide[hc_cut_all$cluster == i]) %>%
+    ggplot(aes(x = time, y = logFC, group = gene_name)) + 
+    geom_line(color = "grey", alpha = 0.5) + 
+    geom_point(size = 2, alpha = 0.6)  +
+    theme_bw(base_size = 16) + 
+    ggtitle(paste0("cluster ", i))
+  print(p)
+}
+```
+
+
+## All DE, different parameters {.tabset}
+
+We test both pearson and spearman correlation and different linkage functions.
+```{r clustering-DE-parameters, warnings = FALSE, message = FALSE, results = "asis", fig.width = 12}
+test_clustering <- function(dat, dist, linkage, nc = 3, dat_logfc, gene_ids){
+  gene_dist <- get_dist(dat, method = dist)
+  tree <- hclust(gene_dist, method = linkage)
+  cor(gene_dist, cophenetic(tree))
+  hc_cut <- cutree(tree, k = nc)
+  ## we want the cluster and silhouette plot in one row
+  plot_list <- list()
+  for (i in 1:nc){
+    ## select all genes in cluster
+    p <- dat_logfc %>% dplyr::filter(gene_name %in% 
+                                            gene_ids[hc_cut == i]) %>%
+      ggplot(aes(x = time, y = logFC, group = gene_name)) + 
+      geom_line(color = "grey", alpha = 0.5) + 
+      geom_point(size = 2, alpha = 0.6)  +
+      theme_bw(base_size = 16) + 
+      ggtitle(paste0(dist, " correlation; ", linkage, " linkage; cluster ", i))
+    # print(p)
+    plot_list[[i]] <- p
+  }    
+  print(plot_grid(plotlist = plot_list, ncol = 3))
+  print(plot(silhouette(hc_cut, gene_dist), main = paste("k = ", i), do.n.k = TRUE))
+  
+}
+
+
+dist_met <- c("pearson", "spearman")
+link_met <- c("average", "complete", "centroid", "single", "ward.D2")
+for(d in dist_met){
+  for(n in 3:6){
+    # par(mfrow=c(ceiling((n+1)/3), 3), by.row = TRUE)
+    # pdf(here("analysis", "figures", "clustering", paste0("allDE_", d, "_", n, "cluster.pdf")))
+    for(l in link_met){
+      cat(paste0("### ", d, ": ",l, " linkage ", n, ", cluster \n"))
+      test_clustering(logfc_wide, d, l, nc = n, dat_logfc, gene_wide)
+      cat("\n\n")
+    }
+  }
+}
+```
+
+# DE up
+We might need to separate the genes into up and down DE, because the correlation based distance metric does not differentiate between positive and negative logFC. It is also hard to visualize such a big dendrogram.
+```{r clustering-up, warnings = FALSE}
+up <- de_genes <- unique(unlist(lapply(res, function(x) 
+  x[x$FDR <= 0.05 & x$logFC > 0, "gene_id"])))
+length(up)
+## prepare data frame
+dat_up <- dat_logfc %>% dplyr::filter(gene_id %in% up)
+
+## we need a table with row = observations (genes) and columns = variables (time points)
+dat_up <- dat_up %>% tidyr::spread(key = time, value = logFC)
+gene_up <- dat_up$gene_name
+dat_up <- dat_up%>% dplyr::select(-gene_id, -gene_name) 
+
+## Clustering
+gene_dist_up <- get_dist(dat_up, method = "pearson")
+## linkage function
+hc_up <- hclust(d = gene_dist_up, method = "complete")
+## correlation between cophenetic and original distance
+cor(gene_dist_up,  cophenetic(hc_up))
+## single linkage
+cor(gene_dist_up, cophenetic(hclust(gene_dist_up, method = "single")))
+
+hc_up <- hclust(gene_dist_up, method = "average")
+cor(gene_dist_up, cophenetic(hc_up))
+## visualize clusters on PCA plot and silhouette width
+for (k in 2:8){
+  hc_cut_up <- cutree(hc_up, k = k)
+  print(fviz_cluster(object = list(data = dat_up, cluster = hc_cut_up),
+                     geom = "point", ellipse.type = "convex"))
+  print(plot(silhouette(hc_cut_up, gene_dist_up), 
+             main = paste("k = ", k), do.n.k=TRUE))
+}
+
+## what is the best number of clusters
+nbclust_up <- NbClust(data = dat_up, diss = gene_dist_up, distance = NULL, 
+                   min.nc = 2, max.nc = 8, method = "average")
+## best number of clusters per index
+nbclust_up$Best.nc[1,]
+table(nbclust_up$Best.nc[1,])
+nc_up <- sort(table(nbclust_up$Best.nc[1,]), decreasing=TRUE) %>% 
+  names %>% as.numeric %>% .[1]
+## number of genes per cluster
+nbclust_up$Best.partition %>% table
+bclust_up$Best.partition %>% table
+
+## we use 5 clusters instead of 2, because it was the second best partition
+nc_up <- 5
+hc_cut_up <- cutree(hc_up, k = nc_up)
+hc_cut_up %>% table
+
+## plot the logFC per cluster
+for (i in 1:nc_up){
+  print(paste0("cluster ", i))
+  ## select all genes in cluster
+  p <-   dat_logfc_de %>% dplyr::filter(gene_name %in% 
+                                          gene_up[hc_cut_up$cluster == i]) %>%
+    ggplot(aes(x = time, y = logFC, group = gene_name)) + 
+    geom_line(color = "grey", alpha = 0.5) + 
+    geom_point(size = 2, alpha = 0.6)  +
+    theme_bw(base_size = 16) + 
+    ggtitle(paste0("cluster ", i))
+  print(p)
+}
+```
+
+## DE up, different paramters
+```{r clustering-up-paramters, message = FALSE, warnings = FALSE}
+dist_met <- c("pearson", "spearman")
+link_met <- c("average", "complete", "centroid", "single", "ward.D2")
+for(d in dist_met){
+  for(n in 3:6){
+    pdf(here("analysis", "figures", "clustering", paste0("DEup_", d, "_", n, "cluster.pdf")))
+    for(l in link_met){
+      test_clustering(dat_up, d, l, nc = n, dat_logfc_de, gene_up)
+    }
+    dev.off()
+  }
+}
+```
+
+
+# DE down
+```{r clustering-down, warnings = FALSE}
+down <- de_genes <- unique(unlist(lapply(res, function(x) 
+  x[x$FDR <= 0.05 & x$logFC < 0, "gene_id"])))
+length(down)
+## prepare data frame
+dat_down <- dat_logfc %>% dplyr::filter(gene_id %in% down)
+
+## we need a table with row = observations (genes) and columns = variables (time points)
+dat_down <- dat_down %>% tidyr::spread(key = time, value = logFC)
+gene_down <- dat_down$gene_name
+dat_down <- dat_down%>% dplyr::select(-gene_id, -gene_name) 
+
+## Clustering
+gene_dist_down <- get_dist(dat_down, method = "spearman")
+
+## linkage function
+hc_down <- hclust(d = gene_dist_down, method = "complete")
+## correlation between cophenetic and original distance
+cor(gene_dist_down,  cophenetic(hc_down))
+
+## single linkage
+cor(gene_dist_down, cophenetic(hclust(gene_dist_down, method = "single")))
+
+hc_down <- hclust(gene_dist_down, method = "average")
+cor(gene_dist_down, cophenetic(hc_down))
+
+for (k in 2:8){
+  hc_cut_down <- cutree(hc_down, k = k)
+  print(fviz_cluster(object = list(data = dat_down, cluster = hc_cut_down),
+                     geom = "point", ellipse.type = "convex"))
+  print(plot(silhouette(hc_cut_down, gene_dist_down), 
+             main = paste("k = ", k), do.n.k=TRUE))
+
+}
+
+## what is the best number of clusters
+nbclust_down <- NbClust(data = dat_down, diss = gene_dist_down, distance = NULL, 
+                   min.nc = 2, max.nc = 8, method = "average")
+## best number of clusters per index
+nbclust_down$Best.nc[1,]
+table(nbclust_down$Best.nc[1,])
+nc_down <- sort(table(nbclust_down$Best.nc[1,]), decreasing=TRUE) %>% 
+  names %>% as.numeric %>% .[1]
+## number of genes per cluster
+nbclust_down$Best.partition %>% table
+
+hc_cut_down <- cutree(hc_down, k = nc_down)
+hc_cut_down %>% table
+
+## plot the logFC per cluster
+for (i in 1:nc_down){
+  print(paste0("cluster ", i))
+  ## select all genes in cluster
+  p <-   dat_logfc_de %>% dplyr::filter(gene_name %in% 
+                                          gene_down[hc_cut_down$cluster == i]) %>%
+    ggplot(aes(x = time, y = logFC, group = gene_name)) + 
+    geom_line(color = "grey", alpha = 0.5) + 
+    geom_point(size = 2, alpha = 0.6)  +
+    theme_bw(base_size = 16) + 
+    ggtitle(paste0("cluster ", i))
+  print(p)
+}
+```
+
+## DE down, different parameters
+```{r clustering-down-paramters, message = FALSE, warnings = FALSE}
+dist_met <- c("pearson", "spearman")
+link_met <- c("average", "complete", "centroid", "single", "ward.D2")
+for(d in dist_met){
+  for(n in 3:6){
+    pdf(here("analysis", "figures", "clustering", paste0("DEdown_", d, "_", n, "cluster.pdf")))
+    for(l in link_met){
+      test_clustering(dat_down, d, l, nc = n, dat_logfc_de, gene_down)
+    }
+    dev.off()
+  }
+}
+```
+
+
+# All FUS targets
+```{r clustering-all-targets, warnings = FALSE}
+targets_id <- targets$gene_id
+length(targets_id)
+## prepare data frame
+dat_fus <- dat_logfc %>% dplyr::filter(gene_id %in% targets_id) %>% 
+  dplyr::filter(!is.na(logFC))
+
+## we need a table with row = observations (genes) and columns = variables (time points)
+dat_fus <- dat_fus %>% tidyr::spread(key = time, value = logFC)
+gene_fus <- dat_fus$gene_name
+dat_fus <- dat_fus%>% dplyr::select(-gene_id, -gene_name) 
+
+## Clustering
+gene_dist_fus <- get_dist(dat_fus, method = "spearman")
+
+## linkage function
+hc_fus <- hclust(d = gene_dist_fus, method = "complete")
+## correlation between cophenetic and original distance
+cor(gene_dist_fus,  cophenetic(hc_fus))
+## single linkage
+cor(gene_dist_fus, cophenetic(hclust(gene_dist_fus, method = "single")))
+## average linkage
+hc_fus <- hclust(gene_dist_fus, method = "average")
+cor(gene_dist_fus, cophenetic(hc_fus))
+
+for (k in 2:8){
+  hc_cut_fus <- cutree(hc_fus, k = k)
+  print(fviz_cluster(object = list(data = dat_fus, cluster = hc_cut_fus),
+                     geom = "point", ellipse.type = "convex"))
+  print(plot(silhouette(hc_cut_fus, gene_dist_fus), 
+           main = paste("k = ", k), do.n.k=TRUE))
+}
+
+## what is the best number of clusters
+nbclust_fus <- NbClust(data = dat_fus, diss = gene_dist_fus, distance = NULL, 
+                   min.nc = 2, max.nc = 8, method = "average")
+## best number of clusters per index
+nbclust_fus$Best.nc[1,]
+table(nbclust_fus$Best.nc[1,])
+nc_fus <- sort(table(nbclust_fus$Best.nc[1,]), decreasing=TRUE) %>% 
+  names %>% as.numeric %>% .[1]
+## number of genes per cluster
+nbclust_fus$Best.partition %>% table
+
+hc_cut_fus <- cutree(hc_fus, k = nc_fus)
+hc_cut_fus %>% table
+
+## plot the logFC per cluster
+for (i in 1:nc_fus){
+  print(paste0("cluster ", i))
+  ## select all genes in cluster
+  p <-   dat_logfc %>% dplyr::filter(gene_name %in% 
+                                          gene_fus[hc_cut_fus$cluster == i]) %>%
+    ggplot(aes(x = time, y = logFC, group = gene_name)) + 
+    geom_line(color = "grey", alpha = 0.5) + 
+    geom_point(size = 2, alpha = 0.6)  +
+    theme_bw(base_size = 16) + 
+    ggtitle(paste0("cluster ", i))
+  print(p)
+}
+```
+
+
+## Fus targets, different parameters
+
+```{r clustering-fus-targets-paramters, warnings = FALSE, message = FALSE}
+dist_met <- c("pearson", "spearman")
+link_met <- c("average", "complete", "centroid", "single", "ward.D2")
+for(d in dist_met){
+  for(n in 3:6){
+    pdf(here("analysis", "figures", "clustering", paste0("FUStargets_", d, "_", n, "cluster.pdf")))
+    for(l in link_met){
+      
+      test_clustering(dat_fus, d, l, nc = n, dat_logfc, gene_fus)
+    }
+    dev.off()
+  }
+}
+```
+
+## FUS targets not DE
+
+We separately cluster the FUS targets that are not DE at any time point.
+
+```{r clustering-FUS-notDE}
+## all FUS targets not in DE stability
+targets_notDE_id <- targets_id[!targets_id %in% c(up, down)]
+length(targets_notDE_id)
+## prepare data frame
+dat_fus <- dat_logfc %>% dplyr::filter(gene_id %in% targets_notDE_id) %>% 
+  dplyr::filter(!is.na(logFC))
+
+## we need a table with row = observations (genes) and columns = variables (time points)
+dat_fus <- dat_fus %>% tidyr::spread(key = time, value = logFC)
+gene_fus <- dat_fus$gene_name
+dat_fus <- dat_fus%>% dplyr::select(-gene_id, -gene_name) 
+
+## Clustering
+gene_dist_fus <- get_dist(dat_fus, method = "pearson")
+
+## linkage function
+hc_fus <- hclust(d = gene_dist_fus, method = "complete")
+## correlation between cophenetic and original distance
+cor(gene_dist_fus,  cophenetic(hc_fus))
+
+## single linkage
+cor(gene_dist_fus, cophenetic(hclust(gene_dist_fus, method = "single")))
+
+hc_fus <- hclust(gene_dist_fus, method = "average")
+cor(gene_dist_fus, cophenetic(hc_fus))
+
+for (k in 2:8){
+  hc_cut_fus <- cutree(hc_fus, k = k)
+  print(fviz_cluster(object = list(data = dat_fus, cluster = hc_cut_fus),
+                     geom = "point", ellipse.type = "convex"))
+  print(plot(silhouette(hc_cut_fus, gene_dist_fus), 
+             main = paste("k = ", k), do.n.k=TRUE))
+}
+
+## what is the best number of clusters
+nbclust_fus <- NbClust(data = dat_fus, diss = gene_dist_fus, distance = NULL, 
+                   min.nc = 2, max.nc = 8, method = "average")
+## best number of clusters per index
+nbclust_fus$Best.nc[1,]
+table(nbclust_fus$Best.nc[1,])
+nc_fus <- sort(table(nbclust_fus$Best.nc[1,]), decreasing=TRUE) %>% 
+  names %>% as.numeric %>% .[1]
+## number of genes per cluster
+nbclust_fus$Best.partition %>% table
+
+hc_cut_fus <- cutree(hc_fus, k = nc_fus)
+hc_cut_fus %>% table
+
+## plot the logFC per cluster
+for (i in 1:nc_fus){
+  print(paste0("cluster ", i))
+  ## select all genes in cluster
+  p <-   dat_logfc %>% dplyr::filter(gene_name %in% 
+                                          gene_fus[hc_cut_fus == i]) %>%
+    ggplot(aes(x = time, y = logFC, group = gene_name)) + 
+    geom_line(color = "grey", alpha = 0.5) + 
+    geom_point(size = 2, alpha = 0.6)  +
+    theme_bw(base_size = 16) + 
+    ggtitle(paste0("cluster ", i))
+  print(p)
+}
+```
+
+
+## Fus targets not DE, different parameters
+
+```{r clustering-fus-notDE-paramters, warnings = FALSE, message = FALSE}
+dist_met <- c("pearson", "spearman")
+link_met <- c("average", "complete", "centroid", "single", "ward.D2")
+for(d in dist_met){
+  for(n in 3:6){
+    pdf(here("analysis", "figures", "clustering", paste0("FUStargets_notDE_", d, "_", n, "cluster.pdf")))
+    for(l in link_met){
+      
+      test_clustering(dat_fus, d, l, nc = n, dat_logfc, gene_fus)
+    }
+    dev.off()
+  }
+}
+```
+
+
+
+# location of FUS binding
+
+We want to investigate whether genes that are DE up or down or unchanged in stability in KI vs. WT have different FUS binding patterns. We split the FUS targets into these 3 classes and plot the distribution of peak locations on pre-mRNA.
+
+We prepare the annotation and read the list of synaptoneurosome FUS peaks after MA-plot filtering.
+```{r prepare-peaks-anno, warnings = FALSE}
+source(here("scripts", "data_import.R"))
+
+## read GTF and split by annotation
+anno <- prepare_anno(gtf)
+
+## SNS FUS peaks 
+peaks <- readRDS(fus_peaks_rds)
+peaks <- peaks[peaks$gene_name %in% targets$gene_name]
+```
+
+We split the peaks into the three groups and plot the distribution of their annotated location.
+```{r peaks-annotation-barplot}
+## split peaks in three sets
+fus_gene_list <- list(up = up[up %in% targets$gene_id], 
+                       down = down[down %in% targets$gene_id], 
+      unchanged = targets$gene_id[!(targets$gene_id %in% unique(c(up, down)))])
+lengths(fus_gene_list)
+
+## separate the peaks into sets
+fus_peak_list <- list(up = peaks[peaks$gene_id %in% fus_gene_list[["up"]]],
+                      down = peaks[peaks$gene_id %in% fus_gene_list[["down"]]],
+            unchanged = peaks[peaks$gene_id %in% fus_gene_list[["unchanged"]]])
+lengths(fus_peak_list)
+
+## split the peaks by gene set
+peak_gene_region_barplot(fus_peak_list, anno)
+```
+
