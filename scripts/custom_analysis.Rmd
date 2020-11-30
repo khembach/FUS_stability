@@ -1,0 +1,411 @@
+---
+title: "RNA-seq analysis"
+author: "Katharina Hembach"
+date: "9/3/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(iSEE)
+library(here)
+
+set_here(path = "/Volumes/Shared/data/seq/sonu_RNAseq/polyA_Aug2019/")
+
+sce <- readRDS(here("output/outputR/shiny_sce.rds" ))
+
+# sce on gene level
+sce_g <- sce$sce_gene
+
+# sce on transcript level
+sce_t <- sce$sce_tx
+
+# for example to see results on gene level
+app <- iSEE(sce_g)
+shiny::runApp(app)
+```
+
+
+This is the code to recreate the custom iSEE plots (see run_iSEE.R)
+
+```{r}
+## The following list of commands will generate the plots created in iSEE
+## Copy them into a script or an R session containing your SingleCellExperiment.
+## All commands below refer to your SingleCellExperiment object as `se`.
+
+se <- sce_g
+rowData(se)[,"edgeR:groupH.KI.1_mo-groupH.WT.1_mo:gene_id"] <- rowData(se)[["edgeR:groupH.KI.1_mo-groupH.WT.1_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupH.KI.1_mo-groupH.WT.1_mo:gene_name"] <- rowData(se)[["edgeR:groupH.KI.1_mo-groupH.WT.1_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupH.KI.1_mo-groupH.WT.1_mo:logFC"] <- rowData(se)[["edgeR:groupH.KI.1_mo-groupH.WT.1_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupH.KI.1_mo-groupH.WT.1_mo:logCPM"] <- rowData(se)[["edgeR:groupH.KI.1_mo-groupH.WT.1_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupH.KI.1_mo-groupH.WT.1_mo:F"] <- rowData(se)[["edgeR:groupH.KI.1_mo-groupH.WT.1_mo"]][["F"]]
+rowData(se)[,"edgeR:groupH.KI.1_mo-groupH.WT.1_mo:FDR"] <- rowData(se)[["edgeR:groupH.KI.1_mo-groupH.WT.1_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupH.KI.1_mo-groupH.WT.1_mo:PValue"] <- rowData(se)[["edgeR:groupH.KI.1_mo-groupH.WT.1_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupH.KI.1_mo-groupH.WT.1_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupH.KI.1_mo-groupH.WT.1_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupH.KI.1_mo-groupH.WT.1_mo:contrast"] <- rowData(se)[["edgeR:groupH.KI.1_mo-groupH.WT.1_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo:gene_id"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo:gene_name"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo:logFC"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo:logCPM"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo:F"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo"]][["F"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo:FDR"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo:PValue"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo:contrast"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupSNS.WT.1_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.WT.6_mo:gene_id"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.WT.6_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.WT.6_mo:gene_name"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.WT.6_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.WT.6_mo:logFC"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.WT.6_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.WT.6_mo:logCPM"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.WT.6_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.WT.6_mo:F"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.WT.6_mo"]][["F"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.WT.6_mo:FDR"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.WT.6_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.WT.6_mo:PValue"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.WT.6_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.WT.6_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.WT.6_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.WT.6_mo:contrast"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.WT.6_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo:gene_id"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo:gene_name"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo:logFC"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo:logCPM"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo:F"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"]][["F"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo:FDR"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo:PValue"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo:contrast"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupH.WT.6_mo-groupH.WT.1_mo:gene_id"] <- rowData(se)[["edgeR:groupH.WT.6_mo-groupH.WT.1_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupH.WT.6_mo-groupH.WT.1_mo:gene_name"] <- rowData(se)[["edgeR:groupH.WT.6_mo-groupH.WT.1_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupH.WT.6_mo-groupH.WT.1_mo:logFC"] <- rowData(se)[["edgeR:groupH.WT.6_mo-groupH.WT.1_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupH.WT.6_mo-groupH.WT.1_mo:logCPM"] <- rowData(se)[["edgeR:groupH.WT.6_mo-groupH.WT.1_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupH.WT.6_mo-groupH.WT.1_mo:F"] <- rowData(se)[["edgeR:groupH.WT.6_mo-groupH.WT.1_mo"]][["F"]]
+rowData(se)[,"edgeR:groupH.WT.6_mo-groupH.WT.1_mo:FDR"] <- rowData(se)[["edgeR:groupH.WT.6_mo-groupH.WT.1_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupH.WT.6_mo-groupH.WT.1_mo:PValue"] <- rowData(se)[["edgeR:groupH.WT.6_mo-groupH.WT.1_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupH.WT.6_mo-groupH.WT.1_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupH.WT.6_mo-groupH.WT.1_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupH.WT.6_mo-groupH.WT.1_mo:contrast"] <- rowData(se)[["edgeR:groupH.WT.6_mo-groupH.WT.1_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.KI.1_mo:gene_id"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.KI.1_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.KI.1_mo:gene_name"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.KI.1_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.KI.1_mo:logFC"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.KI.1_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.KI.1_mo:logCPM"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.KI.1_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.KI.1_mo:F"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.KI.1_mo"]][["F"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.KI.1_mo:FDR"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.KI.1_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.KI.1_mo:PValue"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.KI.1_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.KI.1_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.KI.1_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupH.KI.6_mo-groupH.KI.1_mo:contrast"] <- rowData(se)[["edgeR:groupH.KI.6_mo-groupH.KI.1_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo:gene_id"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo:gene_name"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo:logFC"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo:logCPM"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo:F"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo"]][["F"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo:FDR"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo:PValue"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo:contrast"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupSNS.WT.1_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo:gene_id"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo:gene_name"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo:logFC"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo:logCPM"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo:F"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo"]][["F"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo:FDR"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo:PValue"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo:contrast"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupSNS.KI.1_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:gene_id"] <- rowData(se)[["edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:gene_name"] <- rowData(se)[["edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:logFC"] <- rowData(se)[["edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:logCPM"] <- rowData(se)[["edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:F"] <- rowData(se)[["edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo"]][["F"]]
+rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:FDR"] <- rowData(se)[["edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:PValue"] <- rowData(se)[["edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:contrast"] <- rowData(se)[["edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo:gene_id"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo:gene_name"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo:logFC"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo:logCPM"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo:F"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo"]][["F"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo:FDR"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo:PValue"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo:contrast"] <- rowData(se)[["edgeR:groupSNS.KI.1_mo-groupH.KI.1_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo:gene_id"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo:gene_name"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo:logFC"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo:logCPM"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo:F"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo"]][["F"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo:FDR"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo:PValue"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo:contrast"] <- rowData(se)[["edgeR:groupSNS.WT.6_mo-groupH.WT.6_mo"]][["contrast"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo:gene_id"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo"]][["gene_id"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo:gene_name"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo"]][["gene_name"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo:logFC"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo"]][["logFC"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo:logCPM"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo"]][["logCPM"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo:F"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo"]][["F"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo:FDR"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo"]][["FDR"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo:PValue"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo"]][["PValue"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo:mlog10PValue"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo"]][["mlog10PValue"]]
+rowData(se)[,"edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo:contrast"] <- rowData(se)[["edgeR:groupSNS.KI.6_mo-groupH.KI.6_mo"]][["contrast"]]
+colormap <- ExperimentColorMap()
+colormap <- synchronizeAssays(colormap, se)
+all_coordinates <- list()
+custom_data_fun <- NULL
+custom_stat_fun <- NULL
+
+################################################################################
+# Defining brushes
+################################################################################
+
+all_brushes <- list()
+all_brushes[['rowDataPlot1']] <- list(xmin = 13.29670997673, xmax = 16.830792574485, ymin = 2.6875450324357, ymax = 4.0226033975128, 
+    coords_css = list(xmin = 496.03125, xmax = 587.03125, ymin = 107.734375, ymax = 131.734375), 
+    coords_img = list(xmin = 496.03125, xmax = 587.03125, ymin = 107.734375, ymax = 131.734375), 
+    img_css_ratio = list(x = 1L, y = 1L), mapping = list(x = "X", y = "Y", colour = "ColorBy"), 
+    domain = list(left = -4.4635, right = 17.3935, bottom = -12.984, top = 8.664), 
+    range = list(left = 38.7190443065069, right = 601.520547945205, bottom = 413.457699325771, 
+        top = 24.2971850062453), log = list(x = NULL, y = NULL), direction = "xy", 
+    brushId = "rowDataPlot1_Brush", outputId = "rowDataPlot1")
+
+################################################################################
+## Reduced dimension plot 1
+################################################################################
+
+red.dim <- reducedDim(se, 1);
+plot.data <- data.frame(X = red.dim[, 1], Y = red.dim[, 2], row.names=colnames(se));
+plot.data$ColorBy <- colData(se)[,"age"];
+plot.data$ShapeBy <- colData(se)[,"condition"];
+plot.data$ColorBy <- factor(plot.data$ColorBy);
+plot.data <- subset(plot.data, !is.na(X) & !is.na(Y));
+
+# Saving data for transmission
+all_coordinates[['redDimPlot1']] <- plot.data
+
+# Creating the plot
+ggplot() +
+    geom_point(aes(x = X, y = Y, color = ColorBy, shape = ShapeBy), alpha = 1, plot.data, size=3) +
+    labs(x = "Dimension 1", y = "Dimension 2", color = "age", shape = "condition", title = "(1) MDS") +
+    coord_cartesian(xlim = range(plot.data$X, na.rm = TRUE),
+        ylim = range(plot.data$Y, na.rm = TRUE), expand = TRUE) +
+    scale_color_manual(values=colDataColorMap(colormap, "age", discrete=TRUE)(2), na.value='grey50', drop=FALSE) +
+    scale_fill_manual(values=colDataColorMap(colormap, "age", discrete=TRUE)(2), na.value='grey50', drop=FALSE) +
+    theme_bw() +
+    theme(legend.position = 'bottom', legend.box = 'vertical', legend.text=element_text(size=18), legend.title=element_text(size=22),
+            axis.text=element_text(size=20), axis.title=element_text(size=24), title=element_text(size=24))
+
+################################################################################
+## Column data plot 1
+################################################################################
+
+plot.data <- data.frame(Y = colData(se)[,"age"], row.names=colnames(se));
+plot.data$X <- colData(se)[,"condition"];
+plot.data$X <- factor(plot.data$X);
+plot.data$ColorBy <- colData(se)[,"fraction"];
+plot.data$ColorBy <- factor(plot.data$ColorBy);
+plot.data <- subset(plot.data, !is.na(X) & !is.na(Y));
+
+# Saving data for transmission
+all_coordinates[['colDataPlot1']] <- plot.data
+
+# Setting up plot coordinates
+set.seed(100);
+j.out <- iSEE:::jitterSquarePoints(plot.data$X, plot.data$Y);
+summary.data <- j.out$summary;
+plot.data$jitteredX <- j.out$X;
+plot.data$jitteredY <- j.out$Y;
+
+# Creating the plot
+ggplot(plot.data) +
+    geom_tile(aes(x = X, y = Y, height = 2*YWidth, width = 2*XWidth, group = interaction(X, Y)),
+        summary.data, color = 'black', alpha = 0, size = 0.5) +
+    geom_point(aes(color = ColorBy, x = jitteredX, y = jitteredY), alpha = 1, plot.data, size=2) +
+    scale_color_manual(values=colDataColorMap(colormap, "fraction", discrete=TRUE)(3), na.value='grey50', drop=FALSE) +
+    scale_fill_manual(values=colDataColorMap(colormap, "fraction", discrete=TRUE)(3), na.value='grey50', drop=FALSE) +
+    labs(x = "condition", y = "age", color = "fraction", title = "age vs condition") +
+    scale_x_discrete(drop = FALSE) +
+    scale_y_discrete(drop = FALSE) +
+    theme_bw() +
+    theme(legend.position = 'bottom', legend.text=element_text(size=9),
+        legend.title=element_text(size=11), legend.box = 'vertical',
+        axis.text.x = element_text(angle=90, size=10, hjust=1, vjust=0.5),
+        axis.text.y = element_text(size=10),
+        axis.title=element_text(size=12), title=element_text(size=12))
+
+################################################################################
+## Row data plot 1
+################################################################################
+
+plot.data <- data.frame(Y = rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:logFC"], row.names=rownames(se));
+plot.data$X <- rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:logCPM"];
+plot.data$ColorBy <- rowData(se)[,"edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:mlog10PValue"];
+plot.data <- subset(plot.data, !is.na(X) & !is.na(Y));
+
+# Saving data for transmission
+all_coordinates[['rowDataPlot1']] <- plot.data
+
+# Creating the plot
+ggplot() +
+    geom_point(aes(x = X, y = Y, color = ColorBy), alpha = 1, plot.data, size=1) +
+    labs(x = "edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:logCPM", y = "edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:logFC", color = "edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:mlog10PValue", title = "edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:logFC vs edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:logCPM") +
+    coord_cartesian(xlim = range(plot.data$X, na.rm = TRUE),
+        ylim = range(plot.data$Y, na.rm = TRUE), expand = TRUE) +
+    scale_color_gradientn(colors=rowDataColorMap(colormap, "edgeR:groupSNS.WT.1_mo-groupH.WT.1_mo:mlog10PValue", discrete=FALSE)(21), na.value='grey50', limits=range(plot.data$ColorBy, na.rm=TRUE)) +
+    theme_bw() +
+    theme(legend.position = 'bottom', legend.box = 'vertical', legend.text=element_text(size=9), legend.title=element_text(size=11),
+            axis.text=element_text(size=10), axis.title=element_text(size=12), title=element_text(size=12)) +
+    geom_rect(aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), color='#F2B701', alpha=0.25, fill='#FCF0CC',
+        data=do.call(data.frame, all_brushes[['rowDataPlot1']][c('xmin', 'xmax', 'ymin', 'ymax')]),
+        inherit.aes=FALSE)
+
+################################################################################
+## Feature assay plot 1
+################################################################################
+
+plot.data <- data.frame(Y=assay(se, 4, withDimnames=FALSE)[8144,], row.names = colnames(se))
+plot.data$X <- colData(se)[,"group"];
+plot.data$X <- factor(plot.data$X);
+plot.data$ColorBy <- colData(se)[,"age"];
+plot.data$ShapeBy <- colData(se)[,"condition"];
+plot.data$ColorBy <- factor(plot.data$ColorBy);
+plot.data <- subset(plot.data, !is.na(X) & !is.na(Y));
+
+# Saving data for transmission
+all_coordinates[['featAssayPlot1']] <- plot.data
+
+# Setting up plot coordinates
+plot.data$GroupBy <- plot.data$X;
+set.seed(100);
+plot.data$jitteredX <- iSEE::jitterViolinPoints(plot.data$X, plot.data$Y, 
+    width=0.4, varwidth=FALSE, adjust=1,
+    method='quasirandom', nbins=NULL);
+
+# Creating the plot
+ggplot() +
+    geom_violin(aes(x = X, y = Y, group = GroupBy), alpha = 0.2, data=plot.data, scale = 'width', width = 0.8) +
+    geom_point(aes(y = Y, color = ColorBy, shape = ShapeBy, x = jitteredX), alpha = 1, plot.data, size=2) +
+    labs(x = "group", y = "ENSMUSG00000031144__Syp (logcpm)", color = "age", shape = "condition", title = "ENSMUSG00000031144__Syp vs group") +
+    coord_cartesian(ylim = range(plot.data$Y, na.rm=TRUE), expand = TRUE) +
+    scale_color_manual(values=colDataColorMap(colormap, "age", discrete=TRUE)(2), na.value='grey50', drop=FALSE) +
+    scale_fill_manual(values=colDataColorMap(colormap, "age", discrete=TRUE)(2), na.value='grey50', drop=FALSE) +
+    scale_x_discrete(drop = FALSE) +
+    theme_bw() +
+    theme(legend.position = 'right', legend.text=element_text(size=13.5),
+            legend.title=element_text(size=16.5), legend.box = 'vertical',
+            axis.text.x = element_text(angle=90, size=15, hjust=1, vjust=0.5),
+            axis.text.y=element_text(size=15),
+            axis.title=element_text(size=18), title=element_text(size=18))
+
+################################################################################
+## Sample assay plot 1
+################################################################################
+
+plot.data <- data.frame(Y=assay(se, 1, withDimnames=FALSE)[,7], row.names = rownames(se));
+plot.data$X <- rowData(se)[,"gene_biotype"];
+plot.data$X <- factor(plot.data$X);
+plot.data <- subset(plot.data, !is.na(X) & !is.na(Y));
+
+# Receiving point selection
+selected_pts <- rownames(shiny::brushedPoints(all_coordinates[['rowDataPlot1']], all_brushes[['rowDataPlot1']]));
+plot.data$SelectBy <- rownames(plot.data) %in% selected_pts;
+
+# Saving data for transmission
+all_coordinates[['sampAssayPlot1']] <- plot.data
+
+# Setting up plot coordinates
+plot.data$GroupBy <- plot.data$X;
+set.seed(100);
+plot.data$jitteredX <- iSEE::jitterViolinPoints(plot.data$X, plot.data$Y, 
+    width=0.4, varwidth=FALSE, adjust=1,
+    method='quasirandom', nbins=NULL);
+
+# Creating the plot
+ggplot() +
+    geom_violin(aes(x = X, y = Y, group = GroupBy), alpha = 0.2, data=plot.data, scale = 'width', width = 0.8) +
+    geom_point(aes(y = Y, x = jitteredX), subset(plot.data, !SelectBy), alpha = 0.10, color='#000000', size=1) +
+    geom_point(aes(y = Y, x = jitteredX), subset(plot.data, SelectBy), color='#000000', size=1) +
+    labs(x = "gene_biotype", y = "1_mo_WT_SNS1_lib350676_6534 (counts)", title = "1_mo_WT_SNS1_lib350676_6534 vs gene_biotype") +
+    coord_cartesian(ylim = range(plot.data$Y, na.rm=TRUE), expand = TRUE) +
+    scale_x_discrete(drop = FALSE) +
+    theme_bw() +
+    theme(legend.position = 'bottom', legend.text=element_text(size=9),
+            legend.title=element_text(size=11), legend.box = 'vertical',
+            axis.text.x = element_text(angle=90, size=10, hjust=1, vjust=0.5),
+            axis.text.y=element_text(size=10),
+            axis.title=element_text(size=12), title=element_text(size=12))
+
+################################################################################
+## Heat map 1
+################################################################################
+
+value.mat <- as.matrix(assay(se, 1)[c(17600L, 27123L, 17602L, 17605L, 28502L, 17611L, 28835L, 17601L, 
+17604L, 17609L, 17603L, 17606L, 17599L, 17598L, 17607L), , drop=FALSE]);
+plot.data <- reshape2::melt(value.mat, varnames = c('Y', 'X'));
+
+plot.data[['OrderBy1']] <- factor(colData(se)[['age']][match(plot.data$X, rownames(colData(se)))]);
+plot.data[['OrderBy2']] <- factor(colData(se)[['fraction']][match(plot.data$X, rownames(colData(se)))]);
+plot.data[['OrderBy3']] <- factor(colData(se)[['condition']][match(plot.data$X, rownames(colData(se)))]);
+plot.data <- dplyr::arrange(plot.data, OrderBy1,OrderBy2,OrderBy3);
+plot.data$X <- factor(plot.data$X, levels = unique(plot.data$X));
+
+# Centering and scaling
+plot.data$value <- plot.data$value - ave(plot.data$value, plot.data$Y);
+
+# Creating the heat map
+p0 <- ggplot(plot.data, aes(x = X, y = Y)) +
+    geom_raster(aes(fill = value)) +
+    labs(x='', y='') +
+    scale_fill_gradientn(colors=c('blue','white','orange'),
+                                values=c(0,0.397945144767344,1),
+                                    limits=c(-1839652.24938704,2783226.74179296), na.value='grey50') +
+    scale_y_discrete(expand=c(0, 0)) +
+    theme(axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.line=element_blank());
+heatlegend <- cowplot::get_legend(p0 + theme(legend.position='bottom'));
+
+# Adding annotations
+legends <- list()
+
+p1 <- ggplot(plot.data, aes(x = X, y = 1)) +
+    geom_raster(aes(fill = OrderBy1)) +
+    labs(x='', y='') +
+    scale_y_continuous(breaks=1, labels='age') +
+    scale_fill_manual(values=colDataColorMap(colormap, 'age', discrete=TRUE)(2), na.value='grey50', drop=FALSE, name='age') +
+    theme(axis.text.x=element_blank(), axis.ticks=element_blank(), axis.title.x=element_blank(),
+        rect=element_blank(), line=element_blank(), axis.title.y=element_blank(),
+        plot.margin = unit(c(0,0,-0.5,0), 'lines'));
+legends[[1]] <- cowplot::get_legend(p1 + theme(legend.position='bottom', plot.margin = unit(c(0,0,0,0), 'lines')));
+
+p2 <- ggplot(plot.data, aes(x = X, y = 1)) +
+    geom_raster(aes(fill = OrderBy2)) +
+    labs(x='', y='') +
+    scale_y_continuous(breaks=1, labels='fraction') +
+    scale_fill_manual(values=colDataColorMap(colormap, 'fraction', discrete=TRUE)(3), na.value='grey50', drop=FALSE, name='fraction') +
+    theme(axis.text.x=element_blank(), axis.ticks=element_blank(), axis.title.x=element_blank(),
+        rect=element_blank(), line=element_blank(), axis.title.y=element_blank(),
+        plot.margin = unit(c(0,0,-0.5,0), 'lines'));
+legends[[2]] <- cowplot::get_legend(p2 + theme(legend.position='bottom', plot.margin = unit(c(0,0,0,0), 'lines')));
+
+p3 <- ggplot(plot.data, aes(x = X, y = 1)) +
+    geom_raster(aes(fill = OrderBy3)) +
+    labs(x='', y='') +
+    scale_y_continuous(breaks=1, labels='condition') +
+    scale_fill_manual(values=colDataColorMap(colormap, 'condition', discrete=TRUE)(2), na.value='grey50', drop=FALSE, name='condition') +
+    theme(axis.text.x=element_blank(), axis.ticks=element_blank(), axis.title.x=element_blank(),
+        rect=element_blank(), line=element_blank(), axis.title.y=element_blank(),
+        plot.margin = unit(c(0,0,-0.5,0), 'lines'));
+legends[[3]] <- cowplot::get_legend(p3 + theme(legend.position='bottom', plot.margin = unit(c(0,0,0,0), 'lines')));
+
+# Laying out the grid
+cowplot::plot_grid(
+      cowplot::plot_grid(
+          p1 + theme(legend.position='none'),
+        p2 + theme(legend.position='none'),
+        p3 + theme(legend.position='none'),
+        p0 + theme(legend.position='none'),
+          ncol=1, align='v', rel_heights=c(0.1, 0.1, 0.1, 1)),
+      heatlegend, ncol=1, rel_heights=c(0.9, 0.1))
+
+################################################################################
+## To guarantee the reproducibility of your code, you should also
+## record the output of sessionInfo()
+sessionInfo()
+```
+
