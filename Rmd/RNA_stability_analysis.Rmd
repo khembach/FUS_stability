@@ -35,6 +35,8 @@ library(cowplot)
 library(factoextra)
 library(NbClust)
 library(cluster)
+library(GGally)
+library(ggbeeswarm)
 ```
 
 
@@ -103,6 +105,22 @@ res_all <- lapply(res_all, function(x) {
   x[x$gene_biotype %in% c("protein_coding", "lincRNA"),]
 })
 ```
+
+We save the counts and gene annotation to file.
+```{r save-results-table}
+logcpm_table <- rowData(sg) %>% as.data.frame %>% 
+  dplyr::select(c("gene_id", "gene_name", "gene_biotype", "symbol", 
+                  "description")) %>% 
+  dplyr::bind_cols(assay(sg, "logcpm") %>% as.data.frame)
+logcpm_table %>% 
+  write.table(file = here("analysis", "table_logcpm_all_genes.txt"), 
+              sep = "\t", row.names = FALSE, quote = FALSE )
+logcpm_table %>% 
+  dplyr::filter(gene_id %in% protein_genes$gene_id) %>% 
+  write.table(file = here("analysis", "table_logcpm_filtered.txt"), sep = "\t", 
+              row.names = FALSE, quote = FALSE )
+```
+
 
 
 We count the number of DE genes and overlap them with the lists of FUS targets from the CLIP-seq.
@@ -351,7 +369,7 @@ lapply(res, function(x){
 
 Over representation analysis to characterize the sets of differentialy expressed genes.
 
-The background are all genes with cpm > 1 in all WT 1 replicates.
+The background are all genes with cpm > 1 in all WT/KI 1 replicates.
 
 ```{r import-SNS-bg}
 ## all genes with >= 1 CPM in all replicates per group (logcpm 0 = cpm 1)
@@ -686,8 +704,7 @@ for (k in 2:8){
   hc_cut <- cutree(hc2, k = k)
   print(fviz_cluster(object = list(data = logfc_wide, cluster = hc_cut),
                      geom = "point", ellipse.type = "convex"))
-  print(plot(silhouette(hc_cut, gene_dist), 
-           main = paste("k = ", k), do.n.k=TRUE))
+  plot(silhouette(hc_cut, gene_dist), do.n.k=TRUE, border = NA)
 }
 
 ## cut the tree into groups
@@ -709,7 +726,7 @@ for (i in 1:nc_all){
   print(paste0("cluster ", i))
   ## select all genes in cluster
   p <-   dat_logfc_de %>% dplyr::filter(gene_name %in% 
-                                          gene_wide[hc_cut_all$cluster == i]) %>%
+                                          gene_wide[hc_cut_all == i]) %>%
     ggplot(aes(x = time, y = logFC, group = gene_name)) + 
     geom_line(color = "grey", alpha = 0.5) + 
     geom_point(size = 2, alpha = 0.6)  +
@@ -723,7 +740,7 @@ for (i in 1:nc_all){
 ## All DE, different parameters {.tabset}
 
 We test both pearson and spearman correlation and different linkage functions.
-```{r clustering-DE-parameters, warnings = FALSE, message = FALSE, results = "asis", fig.width = 12}
+```{r clustering-DE-parameters, warnings = FALSE, message = FALSE, results = "asis", fig.width = 12, fig.height = 8}
 test_clustering <- function(dat, dist, linkage, nc = 3, dat_logfc, gene_ids){
   gene_dist <- get_dist(dat, method = dist)
   tree <- hclust(gene_dist, method = linkage)
@@ -739,27 +756,23 @@ test_clustering <- function(dat, dist, linkage, nc = 3, dat_logfc, gene_ids){
       geom_line(color = "grey", alpha = 0.5) + 
       geom_point(size = 2, alpha = 0.6)  +
       theme_bw(base_size = 16) + 
-      ggtitle(paste0(dist, " correlation; ", linkage, " linkage; cluster ", i))
+      ggtitle(paste0(linkage, " linkage; cluster ", i))
     # print(p)
     plot_list[[i]] <- p
   }    
   print(plot_grid(plotlist = plot_list, ncol = 3))
-  print(plot(silhouette(hc_cut, gene_dist), main = paste("k = ", i), do.n.k = TRUE))
-  
+  plot(silhouette(hc_cut, gene_dist), do.n.k = TRUE, border = NA)
 }
-
 
 dist_met <- c("pearson", "spearman")
 link_met <- c("average", "complete", "centroid", "single", "ward.D2")
 for(d in dist_met){
   for(n in 3:6){
-    # par(mfrow=c(ceiling((n+1)/3), 3), by.row = TRUE)
-    # pdf(here("analysis", "figures", "clustering", paste0("allDE_", d, "_", n, "cluster.pdf")))
+    cat(paste0("### ", d, ": ", n, " cluster \n"))
     for(l in link_met){
-      cat(paste0("### ", d, ": ",l, " linkage ", n, ", cluster \n"))
       test_clustering(logfc_wide, d, l, nc = n, dat_logfc, gene_wide)
-      cat("\n\n")
     }
+    cat("\n\n")
   }
 }
 ```
@@ -794,8 +807,7 @@ for (k in 2:8){
   hc_cut_up <- cutree(hc_up, k = k)
   print(fviz_cluster(object = list(data = dat_up, cluster = hc_cut_up),
                      geom = "point", ellipse.type = "convex"))
-  print(plot(silhouette(hc_cut_up, gene_dist_up), 
-             main = paste("k = ", k), do.n.k=TRUE))
+  plot(silhouette(hc_cut_up, gene_dist_up), do.n.k=TRUE, border = NA)
 }
 
 ## what is the best number of clusters
@@ -808,7 +820,6 @@ nc_up <- sort(table(nbclust_up$Best.nc[1,]), decreasing=TRUE) %>%
   names %>% as.numeric %>% .[1]
 ## number of genes per cluster
 nbclust_up$Best.partition %>% table
-bclust_up$Best.partition %>% table
 
 ## we use 5 clusters instead of 2, because it was the second best partition
 nc_up <- 5
@@ -820,7 +831,7 @@ for (i in 1:nc_up){
   print(paste0("cluster ", i))
   ## select all genes in cluster
   p <-   dat_logfc_de %>% dplyr::filter(gene_name %in% 
-                                          gene_up[hc_cut_up$cluster == i]) %>%
+                                          gene_up[hc_cut_up == i]) %>%
     ggplot(aes(x = time, y = logFC, group = gene_name)) + 
     geom_line(color = "grey", alpha = 0.5) + 
     geom_point(size = 2, alpha = 0.6)  +
@@ -830,20 +841,32 @@ for (i in 1:nc_up){
 }
 ```
 
-## DE up, different paramters
-```{r clustering-up-paramters, message = FALSE, warnings = FALSE}
+## DE up, different paramters {.tabset}
+```{r clustering-up-paramters, warnings = FALSE, message = FALSE, results = "asis", fig.width = 12, fig.height = 8}
 dist_met <- c("pearson", "spearman")
 link_met <- c("average", "complete", "centroid", "single", "ward.D2")
 for(d in dist_met){
   for(n in 3:6){
-    pdf(here("analysis", "figures", "clustering", paste0("DEup_", d, "_", n, "cluster.pdf")))
+    cat(paste0("### ", d, ": ", n, ", cluster \n"))
     for(l in link_met){
       test_clustering(dat_up, d, l, nc = n, dat_logfc_de, gene_up)
     }
-    dev.off()
+    cat("\n\n")
   }
 }
 ```
+
+## DE up, ward.D
+```{r clustering-up-paramters-ward-d, fig.width = 12, fig.height = 8}
+l <- "ward.D"
+for(d in dist_met){
+  for(n in 3:6){
+      test_clustering(dat_up, d, l, nc = n, dat_logfc_de, gene_up)
+
+  }
+}
+```
+
 
 
 # DE down
@@ -877,8 +900,7 @@ for (k in 2:8){
   hc_cut_down <- cutree(hc_down, k = k)
   print(fviz_cluster(object = list(data = dat_down, cluster = hc_cut_down),
                      geom = "point", ellipse.type = "convex"))
-  print(plot(silhouette(hc_cut_down, gene_dist_down), 
-             main = paste("k = ", k), do.n.k=TRUE))
+  plot(silhouette(hc_cut_down, gene_dist_down), do.n.k=TRUE, border = NA)
 
 }
 
@@ -901,7 +923,7 @@ for (i in 1:nc_down){
   print(paste0("cluster ", i))
   ## select all genes in cluster
   p <-   dat_logfc_de %>% dplyr::filter(gene_name %in% 
-                                          gene_down[hc_cut_down$cluster == i]) %>%
+                                          gene_down[hc_cut_down == i]) %>%
     ggplot(aes(x = time, y = logFC, group = gene_name)) + 
     geom_line(color = "grey", alpha = 0.5) + 
     geom_point(size = 2, alpha = 0.6)  +
@@ -911,17 +933,31 @@ for (i in 1:nc_down){
 }
 ```
 
-## DE down, different parameters
-```{r clustering-down-paramters, message = FALSE, warnings = FALSE}
+## DE down, different parameters {.tabset}
+
+```{r clustering-down-paramters, message = FALSE, warnings = FALSE, results = "asis", fig.width = 12, fig.height = 8}
 dist_met <- c("pearson", "spearman")
 link_met <- c("average", "complete", "centroid", "single", "ward.D2")
 for(d in dist_met){
   for(n in 3:6){
-    pdf(here("analysis", "figures", "clustering", paste0("DEdown_", d, "_", n, "cluster.pdf")))
+    cat(paste0("### ", d, ": ", n, ", cluster \n"))
     for(l in link_met){
       test_clustering(dat_down, d, l, nc = n, dat_logfc_de, gene_down)
     }
-    dev.off()
+    cat("\n\n")
+  }
+}
+```
+
+
+## DE down, ward.D
+
+```{r clustering-down-paramters-ward-d, fig.width = 12, fig.height = 8}
+l <- "ward.D"
+for(d in dist_met){
+  for(n in 3:6){
+      test_clustering(dat_down, d, l, nc = n, dat_logfc_de, gene_down)
+
   }
 }
 ```
@@ -957,8 +993,7 @@ for (k in 2:8){
   hc_cut_fus <- cutree(hc_fus, k = k)
   print(fviz_cluster(object = list(data = dat_fus, cluster = hc_cut_fus),
                      geom = "point", ellipse.type = "convex"))
-  print(plot(silhouette(hc_cut_fus, gene_dist_fus), 
-           main = paste("k = ", k), do.n.k=TRUE))
+  plot(silhouette(hc_cut_fus, gene_dist_fus), do.n.k=TRUE, border = NA)
 }
 
 ## what is the best number of clusters
@@ -980,7 +1015,7 @@ for (i in 1:nc_fus){
   print(paste0("cluster ", i))
   ## select all genes in cluster
   p <-   dat_logfc %>% dplyr::filter(gene_name %in% 
-                                          gene_fus[hc_cut_fus$cluster == i]) %>%
+                                          gene_fus[hc_cut_fus == i]) %>%
     ggplot(aes(x = time, y = logFC, group = gene_name)) + 
     geom_line(color = "grey", alpha = 0.5) + 
     geom_point(size = 2, alpha = 0.6)  +
@@ -991,24 +1026,24 @@ for (i in 1:nc_fus){
 ```
 
 
-## Fus targets, different parameters
+## Fus targets, different parameters {.tabset}
 
-```{r clustering-fus-targets-paramters, warnings = FALSE, message = FALSE}
+```{r clustering-fus-targets-paramters, warnings = FALSE, message = FALSE, results = "asis", fig.width = 12, fig.height = 8}
 dist_met <- c("pearson", "spearman")
 link_met <- c("average", "complete", "centroid", "single", "ward.D2")
 for(d in dist_met){
   for(n in 3:6){
-    pdf(here("analysis", "figures", "clustering", paste0("FUStargets_", d, "_", n, "cluster.pdf")))
+    cat(paste0("### ", d, ": ", n, ", cluster \n"))
     for(l in link_met){
-      
       test_clustering(dat_fus, d, l, nc = n, dat_logfc, gene_fus)
     }
-    dev.off()
+    cat("\n\n")
   }
 }
 ```
 
-## FUS targets not DE
+
+# FUS targets not DE
 
 We separately cluster the FUS targets that are not DE at any time point.
 
@@ -1043,8 +1078,7 @@ for (k in 2:8){
   hc_cut_fus <- cutree(hc_fus, k = k)
   print(fviz_cluster(object = list(data = dat_fus, cluster = hc_cut_fus),
                      geom = "point", ellipse.type = "convex"))
-  print(plot(silhouette(hc_cut_fus, gene_dist_fus), 
-             main = paste("k = ", k), do.n.k=TRUE))
+  plot(silhouette(hc_cut_fus, gene_dist_fus), do.n.k=TRUE, border = NA)
 }
 
 ## what is the best number of clusters
@@ -1077,22 +1111,410 @@ for (i in 1:nc_fus){
 ```
 
 
-## Fus targets not DE, different parameters
+## Fus targets not DE, different parameters {.tabset}
 
-```{r clustering-fus-notDE-paramters, warnings = FALSE, message = FALSE}
+```{r clustering-fus-notDE-paramters, warnings = FALSE, message = FALSE, results = "asis", fig.width = 12, fig.height = 8}
 dist_met <- c("pearson", "spearman")
 link_met <- c("average", "complete", "centroid", "single", "ward.D2")
 for(d in dist_met){
   for(n in 3:6){
-    pdf(here("analysis", "figures", "clustering", paste0("FUStargets_notDE_", d, "_", n, "cluster.pdf")))
+    cat(paste0("### ", d, ": ", n, ", cluster \n"))
     for(l in link_met){
-      
       test_clustering(dat_fus, d, l, nc = n, dat_logfc, gene_fus)
     }
-    dev.off()
+    cat("\n\n")
   }
 }
 ```
+
+## Fus targets not DE, ward.D
+
+```{r clustering-fus-notDE-paramters-ward-d, fig.width = 12, fig.height = 8}
+l <- "ward.D"
+for(d in dist_met){
+  for(n in 3:6){
+      test_clustering(dat_fus, d, l, nc = n, dat_logfc, gene_fus)
+  }
+}
+```
+
+# Hierarchical clustering with difference in log2FC
+
+We use the difference in log2FC between timepoints for clustering instead of the log2FC.
+
+```{r clustering-difference-FUS-notDE}
+## compute difference in logFC between timepoints
+dat_fus_dif <- data.frame("dif_8h_0h" = dat_fus$"8h" - dat_fus$"0h",
+                          "dif_12h_8h" = dat_fus$"12h" - dat_fus$"8h",
+                          "dif_24h_12h" = dat_fus$"24h" - dat_fus$"12h")
+dat_fus_dif_scaled <- scale(dat_fus_dif)
+
+## Clustering
+gene_dist_fus <- get_dist(dat_fus_dif_scaled, method = "euclidean")
+
+
+## linkage function
+hc_fus <- hclust(d = gene_dist_fus, method = "complete")
+## correlation between cophenetic and original distance
+cor(gene_dist_fus,  cophenetic(hc_fus))
+
+## single linkage
+cor(gene_dist_fus, cophenetic(hclust(gene_dist_fus, method = "single")))
+
+cor(gene_dist_fus, cophenetic(hclust(gene_dist_fus, method = "centroid")))
+
+hc_fus <- hclust(gene_dist_fus, method = "average")
+cor(gene_dist_fus, cophenetic(hc_fus))
+
+
+for (k in 2:8){
+  hc_cut_fus <- cutree(hc_fus, k = k)
+  print(fviz_cluster(object = list(data = dat_fus_dif_scaled, cluster = hc_cut_fus),
+                     geom = "point", ellipse.type = "convex"))
+  plot(silhouette(hc_cut_fus, gene_dist_fus), do.n.k=TRUE, border = NA)
+}
+
+## what is the best number of clusters
+nbclust_fus <- NbClust(data = dat_fus_dif_scaled, diss = gene_dist_fus, distance = NULL, 
+                   min.nc = 2, max.nc = 8, method = "average")
+## best number of clusters per index
+nbclust_fus$Best.nc[1,]
+table(nbclust_fus$Best.nc[1,])
+nc_fus <- sort(table(nbclust_fus$Best.nc[1,]), decreasing=TRUE) %>% 
+  names %>% as.numeric %>% .[1]
+## number of genes per cluster
+nbclust_fus$Best.partition %>% table
+
+hc_cut_fus <- cutree(hc_fus, k = 5)
+hc_cut_fus %>% table
+
+##
+test_clustering(dat_fus_dif_scaled, "euclidean", "average", nc = 5, dat_logfc, gene_fus)
+```
+
+This doesn't work, because we get one big cluster and many small ones.
+
+
+# Hierarchical clustering results: 6 cluster
+
+We decided to use spearman correlation with ward.D linkage function and 6 clusters. We add the cluster IDs to the logFC table.
+
+```{r final-clustering}
+## up DE
+dat_up <- dat_logfc %>% dplyr::filter(gene_id %in% up) %>% 
+  tidyr::spread(key = time, value = logFC)
+hc_up <- cutree(hclust(get_dist(dat_up[,3:6], method = "spearman"), 
+                       method = "ward.D"), k = 6)
+df_up <- dat_up %>% dplyr::mutate(cluster_id = hc_up)
+## label the FUS targets
+df_up$FUS_target <- df_up$gene_id %in% targets$gene_id
+## number of FUS targets per cluster
+table(df_up$cluster_id, df_up$FUS_target)
+
+
+# df_up %>% tidyr::gather(key = time, value = logFC, 
+#                         -gene_name, -cluster_id, -FUS_target) %>%
+#   dplyr::arrange(FUS_target) %>%
+#   dplyr::mutate(time = factor(time, levels = c("0h", "8h", "12h", "24h"))) %>%
+#     ggplot(aes(x = time, y = logFC, group = gene_name, color = FUS_target)) + 
+#     geom_line(alpha = 0.4) + 
+#     geom_point(size = 1.5, alpha = 0.5)  +
+#     theme_light(base_size = 16) + 
+#     facet_wrap(~cluster_id) + 
+#   ylim(-1.5, 4.5) + 
+#   scale_color_manual(values = c("grey", "blue")) + 
+#   guides(color = FALSE)
+# dev.off()
+
+df_up %>% dplyr::arrange(FUS_target) %>% 
+  dplyr::mutate(alpha = ifelse(FUS_target, 0.6, 0.4)) %>%
+  ggparcoord(data = ., columns = 3:6, groupColumn = "FUS_target", 
+  showPoints = FALSE, scale = "globalminmax", 
+  alphaLines =  "alpha") + 
+    theme_light(base_size = 16) + 
+    facet_wrap(~cluster_id) + 
+  ylim(-1.5, 4.5) +
+  scale_color_manual(values = c("grey", "darkblue")) + 
+  guides(color = FALSE, alpha = FALSE) + 
+  xlab("time") + ylab("log2FC (KI-WT)")
+
+
+## down DE
+dat_down <- dat_logfc %>% dplyr::filter(gene_id %in% down) %>% 
+  tidyr::spread(key = time, value = logFC)
+hc_down <- cutree(hclust(get_dist(dat_down[,3:6], method = "spearman"), 
+                       method = "ward.D"), k = 6)
+df_down <- dat_down %>% dplyr::mutate(gene_name = gene_down, cluster_id = hc_down)
+## label the FUS targets
+df_down$FUS_target <- df_down$gene_name %in% targets$gene_name
+table(df_down$cluster_id, df_down$FUS_target)
+
+## number of FUS targets per cluster
+df_down %>% dplyr::arrange(FUS_target) %>% 
+  dplyr::mutate(alpha = ifelse(FUS_target, 0.6, 0.4)) %>%
+  ggparcoord(data = ., columns = 3:6, groupColumn = "FUS_target", 
+  showPoints = FALSE, scale = "globalminmax", 
+  alphaLines =  "alpha") + 
+    theme_light(base_size = 16) + 
+    facet_wrap(~cluster_id) + 
+  ylim(-6, 2.5) +
+  scale_color_manual(values = c("grey", "darkblue")) + 
+  guides(color = FALSE, alpha = FALSE) + 
+  xlab("time") + ylab("log2FC (KI-WT)")
+
+
+## FUS targets not DE
+dat_fus <- dat_logfc %>% dplyr::filter(gene_id %in% targets_notDE_id) %>% 
+  dplyr::filter(!is.na(logFC)) %>% tidyr::spread(key = time, value = logFC)
+hc_fus <- cutree(hclust(get_dist(dat_fus[,3:6], method = "spearman"), 
+                       method = "ward.D"), k = 6)
+df_fus <- dat_fus %>% dplyr::mutate(gene_name = gene_fus, cluster_id = hc_fus)
+table(df_fus$cluster_id)
+## number of FUS targets per cluster
+df_fus %>% 
+  ggparcoord(data = ., columns = 3:6, mapping = ggplot2::aes(color = "1"),
+  showPoints = FALSE, scale = "globalminmax", 
+  alphaLines =  0.6) + 
+    theme_light(base_size = 16) + 
+    facet_wrap(~cluster_id) + 
+  # ylim(-6, 2.5) +
+  scale_color_manual(values = c("darkblue")) + 
+  guides(color = FALSE, alpha = FALSE) + 
+  xlab("time") + ylab("log2FC (KI-WT)")
+```
+
+
+# Hierarchical clustering results: 4 cluster
+
+We decided to use pearson correlation and ward.D2 linkage.
+
+
+```{r final-clustering-4cluster}
+## up DE
+hc_up4 <- cutree(hclust(get_dist(dat_up[,3:6], method = "pearson"), 
+                       method = "ward.D2"), k = 4)
+df_up4 <- dat_up %>% dplyr::mutate(cluster_id = hc_up4)
+## label the FUS targets
+df_up4$FUS_target <- df_up4$gene_id %in% targets$gene_id
+## number of FUS targets per cluster
+table(df_up4$cluster_id, df_up4$FUS_target)
+
+df_up4 %>% dplyr::arrange(FUS_target) %>% 
+  dplyr::mutate(alpha = ifelse(FUS_target, 0.6, 0.4)) %>%
+  ggparcoord(data = ., columns = 3:6, groupColumn = "FUS_target", 
+  showPoints = FALSE, scale = "globalminmax", 
+  alphaLines =  "alpha") + 
+    theme_light(base_size = 16) + 
+    facet_wrap(~cluster_id) + 
+  ylim(-1.5, 4.5) +
+  scale_color_manual(values = c("grey", "darkblue")) + 
+  guides(color = FALSE, alpha = FALSE) + 
+  xlab("time") + ylab("log2FC (KI-WT)")
+
+## down DE
+hc_down4 <- cutree(hclust(get_dist(dat_down[,3:6], method = "pearson"), 
+                       method = "ward.D2"), k = 4)
+df_down4 <- dat_down %>% dplyr::mutate(gene_name = gene_down, cluster_id = hc_down4)
+## label the FUS targets
+df_down4$FUS_target <- df_down4$gene_name %in% targets$gene_name
+table(df_down4$cluster_id, df_down4$FUS_target)
+
+## number of FUS targets per cluster
+df_down4 %>% dplyr::arrange(FUS_target) %>% 
+  dplyr::mutate(alpha = ifelse(FUS_target, 0.6, 0.4)) %>%
+  ggparcoord(data = ., columns = 3:6, groupColumn = "FUS_target", 
+  showPoints = FALSE, scale = "globalminmax", 
+  alphaLines =  "alpha") + 
+    theme_light(base_size = 16) + 
+    facet_wrap(~cluster_id) + 
+  ylim(-6, 2.5) +
+  scale_color_manual(values = c("grey", "darkblue")) + 
+  guides(color = FALSE, alpha = FALSE) + 
+  xlab("time") + ylab("log2FC (KI-WT)")
+
+## FUS targets not DE
+hc_fus4 <- cutree(hclust(get_dist(dat_fus[,3:6], method = "pearson"), 
+                       method = "ward.D2"), k = 4)
+df_fus4 <- dat_fus %>% dplyr::mutate(gene_name = gene_fus, cluster_id = hc_fus4)
+table(df_fus4$cluster_id)
+## number of FUS targets per cluster
+df_fus4 %>% 
+  ggparcoord(data = ., columns = 3:6, mapping = ggplot2::aes(color = "1"),
+  showPoints = FALSE, scale = "globalminmax", 
+  alphaLines =  0.6) + 
+    theme_light(base_size = 16) + 
+    facet_wrap(~cluster_id) + 
+  # ylim(-6, 2.5) +
+  scale_color_manual(values = c("darkblue")) + 
+  guides(color = FALSE, alpha = FALSE) + 
+  xlab("time") + ylab("log2FC (KI-WT)")
+```
+
+
+
+## Gene length per cluster
+
+Does the genomic gene length (including introns) correlate with the cluster ID?
+
+```{r cluster_gene-length}
+df_list <- list(up = df_up, down = df_down, FUS = df_fus)
+for(d in names(df_list)){
+  ## table with gene lengths per cluster
+  df <- lapply(1:6, function(x) {
+    g <- unique(df_list[[d]]$gene_id[df_list[[d]]$cluster_id == x])
+    # dat_logfc_de %>%dplyr::filter(gene_name %in% g) %>% dplyr::pull(gene_id) %>% unique %>%length
+    # width(genes[genes$gene_name %in% g]) 
+    gl <- width(unique(genes[genes$gene_id %in% g]))
+    data.frame(cluster_id = x, gene_length = gl)
+    })
+  df <- do.call(rbind, df)
+  
+  p <- df %>% ggplot(aes(x = factor(cluster_id), y = gene_length, group = cluster_id)) +
+    geom_boxplot() + 
+    scale_y_log10() + 
+    theme_bw(base_size = 16) + 
+    ggtitle(d)
+  print(p)
+}
+
+df_list4 <- list(up = df_up4, down = df_down4, FUS = df_fus4)
+for(d in names(df_list4)){
+  ## table with gene lengths per cluster
+  df <- lapply(1:4, function(x) {
+    g <- unique(df_list4[[d]]$gene_id[df_list4[[d]]$cluster_id == x])
+    gl <- width(unique(genes[genes$gene_id %in% g]))
+    data.frame(cluster_id = x, gene_length = gl)
+    })
+  df <- do.call(rbind, df)
+  
+  p <- df %>% ggplot(aes(x = factor(cluster_id), y = gene_length, group = cluster_id)) +
+    geom_boxplot() + 
+    scale_y_log10() + 
+    theme_bw(base_size = 16) + 
+    ggtitle(d)
+  print(p)
+}
+
+```
+
+We compute the mRNA length per gene (length of longest transcript per gene).
+```{r cluster-transcript-length}
+## using the GTF to generate a txdb
+txdb <- makeTxDbFromGFF(gtf_file)
+tx_by_gene <- transcriptsBy(txdb, by="gene", use.names = FALSE)
+gene_lens <- max(width(tx_by_gene)) ## length of longest transcript per gene (this still includes introns!)
+
+cluster_genes <- unique(unlist(lapply(df_list, function(x) x$gene_id)))
+## get transcript lengths
+## subset to genes of interest (all DE + FUS targets) --> get transcript lengths --> group_by gene_id --> take maximum
+trl <- transcriptLengths(txdb, with.cds_len=FALSE, with.utr5_len=TRUE, 
+                         with.utr3_len=TRUE) 
+trl <- trl %>% dplyr::filter(gene_id %in% cluster_genes) %>% 
+  dplyr::group_by(gene_id) %>%
+  dplyr::summarize(max_tx_len = max(tx_len), max_utr5_len = max(utr5_len),
+                   max_utr3_len = max(utr3_len))
+
+## 4 clusters
+for(d in names(df_list4)){
+  ## table with gene lengths per cluster
+  df <- lapply(1:4, function(x) {
+    g <- unique(df_list4[[d]]$gene_id[df_list4[[d]]$cluster_id == x])
+    data.frame(cluster_id = x, transcript = trl[trl$gene_id %in% g,]$max_tx_len,
+               UTR5 = trl[trl$gene_id %in% g,]$max_utr5_len,
+               UTR3 = trl[trl$gene_id %in% g,]$max_utr3_len)
+    })
+  df <- do.call(rbind, df)
+  
+  p <- df %>% tidyr::gather(key = "measure", value = "length", -cluster_id) %>% 
+    ggplot(aes(x = factor(cluster_id), y = length, group = cluster_id)) +
+    geom_boxplot() + scale_y_log10() + theme_bw(base_size = 16) + ggtitle(d) + 
+    facet_wrap(~measure) + xlab("cluster")
+  print(p)
+}
+
+
+## 6 clusters
+for(d in names(df_list)){
+  ## table with gene lengths per cluster
+  df <- lapply(1:6, function(x) {
+    g <- unique(df_list[[d]]$gene_id[df_list[[d]]$cluster_id == x])
+    data.frame(cluster_id = x, transcript = trl[trl$gene_id %in% g,]$max_tx_len,
+               UTR5 = trl[trl$gene_id %in% g,]$max_utr5_len,
+               UTR3 = trl[trl$gene_id %in% g,]$max_utr3_len)
+    })
+  df <- do.call(rbind, df)
+  
+  p <- df %>% tidyr::gather(key = "measure", value = "length", -cluster_id) %>% 
+    ggplot(aes(x = factor(cluster_id), y = length, group = cluster_id)) +
+    geom_boxplot() + scale_y_log10() + theme_bw(base_size = 16) + ggtitle(d) + 
+    facet_wrap(~measure) + xlab("cluster")
+  print(p)
+}
+
+```
+
+
+## ORA per cluster
+
+Are the clusters enriched for specific functions?
+
+```{r clustering-ORA}
+clus_ora_res <- list()
+
+for (s in names(df_list)) {
+  d <- df_list[[s]]
+  nclus <- 1:6
+  gene_lists <- split(d$gene_id, d$cluster_id)
+  
+  for (i in nclus) {
+    name <- paste0(s, "_cluster", i)
+    ids <- gene_lists[[i]]
+    
+    if (file.exists(here("Rmd", "rds", paste0(name, "_entrez.rds")))) {
+      entrez_ids <- readRDS(here("Rmd", "rds", paste0(name, "_entrez.rds")))  
+    } else{
+      ## convert the Ensembl Gene IDs to entrez Gene IDs with Biomart
+      entrez_ids <- getBM(attributes = c("ensembl_gene_id","entrezgene_id"), 
+                   values = ids, mart = ensembl )
+      ## we only keep the genes from our initial list
+      entrez_ids <- entrez_ids[entrez_ids$ensembl_gene_id %in% ids, ]
+      saveRDS(entrez_ids, here("Rmd", "rds", paste0(name, "_entrez.rds"))) 
+    }
+    
+    ## Match gene length to bg list
+    m <- match(bg_wt$ensembl_gene_id, genes$gene_id)
+    gene_length <- width(genes)[m]
+    
+    ## GO analysis with goana using gene length as covariate
+    goana_res <- goana(de = unique(entrez_ids$entrezgene), species = "Mm", 
+                       universe = bg_wt$entrezgene, covariate = gene_length)
+    goana_res <- goana_res[order(goana_res$P.DE, decreasing = FALSE),]
+    clus_ora_res[[name]] <- goana_res
+    
+    ## write results
+    write.table(topGO(goana_res, ontology = "CC", number = 100),
+                here("analysis", "goana", paste0(name, "_goana_CC.txt")),
+                sep = "\t", quote = FALSE)
+    write.table(topGO(goana_res, ontology = "BP", number = 100),
+                here("analysis", "goana", paste0(name, "_goana_BP.txt")),
+                sep = "\t", quote = FALSE)
+    write.table(topGO(goana_res, ontology = "MF", number = 100),
+                here("analysis", "goana", paste0(name, "_goana_MF.txt")),
+                sep = "\t", quote = FALSE)
+  }
+}
+```
+
+```{r clustering-print-ora-res}
+for (s in names(clus_ora_res)) {
+  print(s)
+  ## What are the most enriched annotation terms?
+  print(topGO(clus_ora_res[[s]], ontology = "CC", number = 3))
+  print(topGO(clus_ora_res[[s]], ontology = "BP", number = 3))
+  print(topGO(clus_ora_res[[s]], ontology = "MF", number = 3))
+}
+```
+
 
 
 
@@ -1128,5 +1550,100 @@ lengths(fus_peak_list)
 
 ## split the peaks by gene set
 peak_gene_region_barplot(fus_peak_list, anno)
+```
+
+Split the plot into 8h and 12h DE genes.
+```{r peaks-annotation-barplot-split}
+fus_peak_list_split <- 
+  list(up_8h <- peaks[peaks$gene_id %in% 
+    (res[["8h"]] %>% dplyr::filter(FDR <- 0.05 & logFC > 0) %>% pull(gene_id))],
+    up_12h <- peaks[peaks$gene_id %in% 
+    (res[["12h"]] %>% dplyr::filter(FDR <- 0.05 & logFC > 0) %>% pull(gene_id))],
+    up_24h <- peaks[peaks$gene_id %in% 
+    (res[["24h"]] %>% dplyr::filter(FDR <- 0.05 & logFC > 0) %>% pull(gene_id))],
+    down_8h <- peaks[peaks$gene_id %in%
+    (res[["8h"]] %>% dplyr::filter(FDR <- 0.05 & logFC < 0) %>% pull(gene_id))],
+    down_12h <- peaks[peaks$gene_id %in% 
+    (res[["12h"]] %>% dplyr::filter(FDR <- 0.05 & logFC < 0) %>% pull(gene_id))],
+    down_24h <- peaks[peaks$gene_id %in%
+    (res[["24h"]] %>% dplyr::filter(FDR <- 0.05 & logFC < 0) %>% pull(gene_id))],
+    unchanged = peaks[peaks$gene_id %in% fus_gene_list[["unchanged"]]])
+names(fus_peak_list_split) <- c("up_8h", "up_12h", "up_24h", "down_8h", 
+                                "down_12h", "down_24h", "unchanged")
+
+peak_gene_region_barplot_split(fus_peak_list_split, anno)
+```
+
+What is the number of peaks per gene in each of the groups? Do the genes with positive logFC have higher numbers of peaks?
+
+```{r gene-list-n-peaks-boxplot, warnings = FALSE}
+fus_list_split_n_peaks <- lapply(names(fus_peak_list_split), function(x) {
+  data.frame(gene_set = x, table(fus_peak_list_split[[x]]$gene_id))})
+
+fus_split_n_peaks <- do.call(rbind, fus_list_split_n_peaks) %>% 
+  dplyr::mutate(gene_set = factor(gene_set, levels = c( "unchanged", "down_8h", 
+                                "down_12h", "down_24h", "up_8h", "up_12h", 
+                                "up_24h")))
+fus_split_n_peaks <- fus_split_n_peaks %>% 
+  tidyr::separate(gene_set, c("direction", "time_point")) %>% 
+  dplyr::mutate(time_point = factor(replace(time_point, is.na(time_point), 
+                                            "unchanged"), 
+                                    levels = c("unchanged", "8h", "12h", "24h")),
+                direction = factor(direction, levels = c("unchanged", "down", 
+                                                         "up")))
+
+p <- ggplot(fus_split_n_peaks, aes(x = time_point, y = Freq, fill = direction)) + 
+  geom_boxplot(alpha = 0.4, outlier.shape = NA) + 
+  geom_quasirandom(dodge.width=0.8, alpha = 0.6, shape = 19, size = 2, show.legend = FALSE) + 
+  scale_y_log10() + theme_bw(base_size = 16) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # guides(alpha = FALSE, color = FALSE) +
+  scale_fill_manual(values = c("darkgrey", "#117733", "#882255")) +
+  xlab("gene set") + ylab("number of peaks per gene")
+p
+```
+
+
+# Subset to the expressed genes in 1mo SNS
+
+We want to focus our analyses and comparison on the genes that are expressed at the synaptic site. Therefore, we filter out genes that were not expressed in our SNS RNA-seq of 1 month old WT mice. In total, we found 15087 genes being expressed in 1mo WT SNS.
+
+```{r expressed-sns-genes}
+## get expressed genes in 1mo WT SNS
+sns_rna <- "/home/Shared_taupo/data/seq/sonu_RNAseq/polyA_Aug2019/output/outputR/edgeR_dge.rds" 
+se_sns <- readRDS(sns_rna)
+sg_sns <- se_sns$sg
+metadata_sns <- colData(sg_sns)
+## How many genes have more than 10 counts in two thirds of the replicates?
+cnts <- assay(sg_sns, "counts")
+## Number of genes with > 10 counts 
+cnts <- cnts > 10
+
+## keep all genes where sum(x>10) >= #replicates * 2/3  (in the WT SNS 1mo samples)
+tmp <- cnts  %>% as.data.frame %>%
+  dplyr::select(metadata_sns[metadata_sns$group == "SNS.WT.1_mo", "names"])
+min_rep <- ncol(tmp) * 2/3  ## minimum required number of replicates with > 10 counts
+expr_sns <- rownames(tmp)[tmp %>% rowSums(.) >= min_rep ] %>% 
+  str_split(string = ., pattern = "__", simplify = TRUE) %>% .[,1]
+length(expr_sns)
+saveRDS(expr_sns, here("Rmd", "rds", "espr_genes_sns.rds"))
+```
+
+Subset the DGE analysis results to the expressed genes in SNS.
+
+```{r subset-DGE-expr-SNS}
+
+lapply(res_all, function(x) x$gene_id %in% expr_sns %>% table)
+
+res <- lapply(res_all, function(x) x %>% as.data.frame %>% 
+                dplyr::filter(FDR <= 0.05))
+lapply(res, nrow)
+## overlap the DE genes with the FUS targets
+for (i in names(res)) {
+  dat <- res[[i]]
+  dat$gene_name %in% targets$gene_name %>% table %>% print
+  print(nrow(dat))
+}
+
 ```
 
