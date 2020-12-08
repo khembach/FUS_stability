@@ -6,9 +6,14 @@
 *.pdf
 Rmd/img/
 Rmd/rds/
+Rmd/*_cache/
 .here
 .snakemake/
 FASTQ
 output
 results/
 reference
+analysis/
+.Renviron
+.Rproj.user/
+*.Rproj
