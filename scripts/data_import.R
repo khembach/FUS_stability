@@ -176,3 +176,56 @@ peak_gene_region_barplot <- function(peaks, anno) {
           guides(fill = guide_legend(nrow=2, byrow = TRUE))
   )
 }
+
+
+
+peak_gene_region_barplot_split <- function(peaks, anno) {
+  olap_len <- list()
+  for (sample in names(peaks)){
+    olap_len[[sample]] <- lapply(anno, function(x) 
+      length(suppressWarnings(subsetByOverlaps(peaks[[sample]], x, type = "any"))))
+    names(olap_len[[sample]]) <- names(anno)
+  } 
+  
+  df <- as.data.frame( t( 
+    cbind( 
+      sapply(olap_len, as.data.frame)) 
+  ) )
+  
+  df$peaks <- rownames(df)
+  df[,names(df) != "peaks"] <- apply(df[,names(df) != "peaks"], 2, as.integer)
+  
+  df <- df %>% gather(key = "annotation", value = "peak_number", -peaks)
+  df <- df[df$annotation != "gene",]
+  df$percentage <- df$peak_number / sapply(df$peaks, function(x) 
+    sum(df[df$peaks == x, "peak_number"]) ) * 100
+  
+  ## reorder the annotation factor levels
+  df$annotation <- factor(df$annotation, 
+                          levels = c("exon", "five_prime_utr", 
+                                     "three_prime_utr", "intron"))
+  print(df)
+  ## stacked barplot with the percentage of reads in the different gene regions
+  ggplot(df, aes(x = peaks, y = percentage, fill = annotation)) +
+          geom_col(position = "stack") +
+          theme_bw() +
+          theme(text = element_text(size = 20), legend.position = "bottom", 
+                legend.direction="horizontal", 
+                legend.box = "horizontal",
+                axis.text.x = element_text(angle = 45, hjust = 1))  +
+          scale_x_discrete(breaks= c("unchanged", "down_8h", "up_8h", "down_12h", 
+                                    "up_12h", "down_24h", "up_24h"), 
+                           labels= c("unchanged", "down_8h", "up_8h", "down_12h", 
+                                    "up_12h", "down_24h", "up_24h"),
+                           limits = c("unchanged", "down_8h", "up_8h", 
+                                      "down_12h", "up_12h", "down_24h", "up_24h"),
+                           name = "peaks in genes with RNA stability change") +
+          scale_fill_manual(labels = c("exon", "5' UTR", "3' UTR", "intron"), 
+                            values = c("exon" = "#9C3B8C", 
+                                       "five_prime_utr" = "#43BB5F",
+                                       "three_prime_utr" = "cyan4", 
+                                       "intron" = "#7BAFDE")) +
+          guides(fill = guide_legend(nrow=2, byrow = TRUE)) 
+}
+
+
