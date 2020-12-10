@@ -41,6 +41,7 @@ library(ggbeeswarm)
 library(car)
 library(scales)
 library(ggsci)
+library(ggpubr)
 ```
 
 
@@ -451,17 +452,13 @@ for (s in names(res)[2:4]) {
       saveRDS(entrez_ids, here("Rmd", "rds", paste0(name, "_entrez.rds"))) 
     }
     
-    ## Match gene length to bg list
-    m <- match(bg_wt$ensembl_gene_id, genes$gene_id)
-    gene_length <- width(genes)[m]
-    
     ## GO analysis with goana using gene length as covariate
     goana_res <- goana(de = unique(entrez_ids$entrezgene), species = "Mm", 
-                       universe = bg_wt$entrezgene, covariate = gene_length)
+                       universe = bg_wt$entrezgene)
     goana_res <- goana_res[order(goana_res$P.DE, decreasing = FALSE),]
     ora_res[[name]] <- goana_res
     
-    ## write results
+    # write results
     write.table(topGO(goana_res, ontology = "CC", number = 100),
                 here("analysis", "goana", paste0(name, "_goana_CC.txt")),
                 sep = "\t", quote = FALSE)
@@ -470,6 +467,11 @@ for (s in names(res)[2:4]) {
                 sep = "\t", quote = FALSE)
     write.table(topGO(goana_res, ontology = "MF", number = 100),
                 here("analysis", "goana", paste0(name, "_goana_MF.txt")),
+                sep = "\t", quote = FALSE)
+    ## combined table for supplement
+    ## include all terms with low p-values
+    topGO(goana_res, number = Inf) %>% dplyr::filter(P.DE <= 0.01) %>%
+    write.table(here("analysis", "goana", paste0(name, "_goana.txt")),
                 sep = "\t", quote = FALSE)
   }
 }
@@ -487,7 +489,9 @@ for (s in names(ora_res)) {
 
 We plot the results of as circle plots with the most important terms from all three ontologies.
 ```{r ORA-res-plot-combined}
-ora_circle_plot <- function(df_comb, repel_xlim = c(9.7, 41), box.padding = 0.8){
+ora_circle_plot <- function(df_comb, repel_xlim = c(9.7, 41), box.padding = 0.8,
+                            ylab = "log2(increased genes with GO term)",
+                            xrange = NULL, yrange = NULL){
   ggplot(df_comb, aes(x = -log10(P.DE), y = log2(DE), size = log2(N), fill = Ont)) + 
   geom_point(shape = 21, alpha = 0.8)  +
   theme_bw() +
@@ -502,85 +506,117 @@ ora_circle_plot <- function(df_comb, repel_xlim = c(9.7, 41), box.padding = 0.8)
   guides(size = guide_legend("log2(genes with GO term)", title.position = "top"),
          fill = guide_legend("Ontology", title.position = "top", 
                              override.aes = list(size=5))) +
-  labs(x = "-log10(p-value)", y = "log2(target genes with GO term)") +
-  scale_fill_locuszoom()
+  labs(x = "-log10(p-value)", y = ylab) +
+  scale_fill_locuszoom() +
+  scale_x_continuous(limits = xrange) + scale_y_continuous(limits = yrange)
 }
 
 ## 8h up
-## 2, 6, 9, 10
-## 1, 3, 8
-## 1
+## 2, 3, 9
+## 1, 3, 4, 5
+## 1, 2
 s <- "8h_up"
-df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 10)[-c(1, 3:5, 7:8),], 
-                 topGO(ora_res[[s]], ontology = "BP", number = 8)[-c(2,4:7),],
-                 topGO(ora_res[[s]], ontology = "MF", number = 1))
-p <- ora_circle_plot(df_comb, repel_xlim = c(2.5, NA), box.padding = 0.8)
+df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 9)[-c(1, 4:8),], 
+                 topGO(ora_res[[s]], ontology = "BP", number = 4)[-2,],
+                 topGO(ora_res[[s]], ontology = "MF", number = 2))
+df_comb$Term[4] <- "nervous system\ndevelopment"
+df_comb$Term[6] <- "movement of cell or\nsubcellular component"
+p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.9,
+                     ylab = "log2(increased genes with GO term)")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
 
 ## 8h down
-## 1, 2
+## 1, 2, 3 
 ## 1, 3
-## 2, 3
+## 1, 2
 s <- "8h_down"
-df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 2), 
+df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 3), 
                  topGO(ora_res[[s]], ontology = "BP", number = 3)[-2,],
-                 topGO(ora_res[[s]], ontology = "MF", number = 3)[-1,])
-p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8)
+                 topGO(ora_res[[s]], ontology = "MF", number = 2))
+p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8,
+                     ylab = "log2(decreased genes with GO term)")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
 
 ## 12h up
-## 1, 3, 4, 5, 6, 
-## 3, 4, 6, 9
-## 1, 3
+## 1, 3, 4, 6, 7 
+## 1, 4, 6, 10
+## 1, 4
 s <- "12h_up"
-df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 6)[-2,], 
-                 topGO(ora_res[[s]], ontology = "BP", number = 9)[-c(1:2, 5, 7:8),],
-                 topGO(ora_res[[s]], ontology = "MF", number = 3)[-2,])
-p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8)
+df_comb_up <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 7)[-c(2, 5),], 
+                 topGO(ora_res[[s]], ontology = "BP", number = 10)[-c(2, 3, 5, 7:9),],
+                 topGO(ora_res[[s]], ontology = "MF", number = 4)[-c(2:3),])
+p <- ora_circle_plot(df_comb_up, repel_xlim = NA, box.padding = 0.8,
+                     ylab = "log2(increased genes with GO term)")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
 
 ## 12h down
 ## 1, 2, 6, 7
-## 1, 2, 5, 9 
+## 1, 2, 4, 9  
 ## 1, 2, 3, 5, 7
 s <- "12h_down"
-df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 7)[-c(3:5),], 
-                 topGO(ora_res[[s]], ontology = "BP", number = 9)[-c(3:4, 6:8),],
+df_comb_down <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 7)[-c(3:5),], 
+                 topGO(ora_res[[s]], ontology = "BP", number = 9)[-c(3, 5:8),],
                  topGO(ora_res[[s]], ontology = "MF", number = 7)[-c(4, 6),])
-p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8)
+p <- ora_circle_plot(df_comb_down, repel_xlim = NA, box.padding = 0.8,
+                     ylab = "log2(decreased genes with GO term)")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
 
+
+## figure for paper with same scale on x and y-axis
+xrange <- c(min(-log10(df_comb_up$P.DE), -log10(df_comb_down$P.DE)), 
+            max(-log10(df_comb_up$P.DE), -log10(df_comb_down$P.DE)))
+yrange <- c(min(log2(df_comb_up$DE), log2(df_comb_down$DE)), 
+            max(log2(df_comb_up$DE), log2(df_comb_down$DE)))
+# df_comb_up$Term[9] <- "modulation of chemical\nsynaptic transmission"
+p <- ora_circle_plot(df_comb_up, repel_xlim = NA, box.padding = 0.7,
+                     ylab = "log2(increased genes with GO term)", 
+                     xrange = xrange, yrange = yrange)
+ggsave(file = here("analysis", "figures", "final", paste0("ora_res_12h_up_fixed_axes.png")), 
+       plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
+p <- ora_circle_plot(df_comb_down, repel_xlim = NA, box.padding = 0.8,
+                     ylab = "log2(decreased genes with GO term)", 
+                     xrange = xrange, yrange = yrange)
+ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, "_fixed_axes.png")), 
+       plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
+
+
 ## 24h up
 ## 1
-## 1, 2, 3
-## 1, 9
+## 1, 3
+## 5, 9
 s <- "24h_up"
 df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 1), 
-                 topGO(ora_res[[s]], ontology = "BP", number = 3),
-                 topGO(ora_res[[s]], ontology = "MF", number = 9)[-c(2:8),])
+                 topGO(ora_res[[s]], ontology = "BP", number = 3)[-2,],
+                 topGO(ora_res[[s]], ontology = "MF", number = 9)[-c(1:4, 6:8),])
 df_comb$Term[1] <- "proton-transporting ATP synthase complex,\ncoupling factor F(o)"
-p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8)
+df_comb$Term[4] <- "structural constituent of\npostsynaptic actin cytoskeleton"
+
+p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8,
+                     ylab = "log2(increased genes with GO term)")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
 
 ## 24h down
-## 1, 6, 8
-## 1, 5, 6, 8
+## 1, 3, 6
+## 1, 4, 5, 8
 ## 1
 s <- "24h_down"
-df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 8)[-c(2:4, 7),], 
-                 topGO(ora_res[[s]], ontology = "BP", number = 8)[-c(2:4, 7),],
+df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 6)[-c(2, 4, 5),], 
+                 topGO(ora_res[[s]], ontology = "BP", number = 8)[-c(2, 3, 6, 7),],
                  topGO(ora_res[[s]], ontology = "MF", number = 1))
-p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8)
+df_comb$Term[6] <- "protein modification by\nsmall protein conjugation or removal"
+
+p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8,
+                     ylab = "log2(decreased genes with GO term)")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
@@ -655,7 +691,7 @@ UpSet(comb_mat, set_order = c("FUS", "8h", "12h", "24h"),
 
 ## Venn diagrams
 ```{r venn-diagram}
-## check if al gnees are unique
+## check if al genes are unique
 lengths(gene_list)
 lapply(gene_list, function(x) length(unique(x)))
 
@@ -678,36 +714,105 @@ print(p)
 
 We performe Fisher's exact test to test for enrichment of FUS targets among the DE genes at each time point.
 ```{r fisher-test-FUS-DE}
+res_tabs <- lapply(res_all, function(x) {
+  x <- x[x$gene_id %in% expr_sns,]
+  x$FUS_target <- x$gene_id %in% targets$gene_id %>% 
+    ifelse("FUS target", "no target")
+  x$DE <- (x$FDR <= 0.05) %>% ifelse("DE", "not DE")
+  x$direction <- (x$logFC > 0) %>% ifelse("up", "down")
+  x$DE_dir <- ifelse(x$DE == "DE", 
+                     ifelse(x$direction == "up", "DE up", "DE down"), "not DE")
+  x$DE_up <- ifelse(x$DE == "DE", 
+                     ifelse(x$direction == "up", "DE up", "not DE up"), "not DE up")
+  x})
+## test of FUS targets among all DE genes
+res_xtab <- lapply(res_tabs, function(x) table(x$FUS_target, x$DE))
+res_xtab[["0h"]] <- NULL
+res_xtab
+fisher_res <- lapply(res_xtab, function(x) fisher.test(x, alternative = "greater"))
+fisher_res
+chi_res <- lapply(res_xtab, function(x) chisq.test(x,correct = FALSE))
+lapply(chi_res, function(x) x$expected)
 
-## For timepoint 8h: contingency table
-##          DE    noDE    total
-##  FUS     9     298     307
-##  noFUS   717   14063   14780
-##  total   726   14361   15087
+## test for enrichment in the upregulated genes
+res_xtab_up <- lapply(res_tabs, function(x) table(x$FUS_target, x$DE_up))
+res_xtab_up[["0h"]] <- NULL
+res_xtab_up
+fisher_res <- lapply(res_xtab_up, function(x) fisher.test(x, alternative = "greater"))
+fisher_res
+chi_res <- lapply(res_xtab_up, function(x) chisq.test(x,correct = FALSE))
+chi_res
+lapply(chi_res, function(x) x$expected)
 
-no_fus <- length(expr_sns) - length(gene_list[["8h"]])
-# no_DE_fus <- length(gene_list[["FUS"]])
-15087 - 726
-## FUS tarets
-gene_list[["FUS"]] %in% gene_list[["8h"]] %>% table
-## no FUS
-length(expr_sns)  - length(gene_list[["FUS"]])
-14780-717
-fisher.test(matrix(c(9, 298, 717, 14063), nrow = 2, byrow = TRUE), 
-            alternative = "greater")
-## 12h
-length(expr_sns) - length(gene_list[["12h"]])
-gene_list[["FUS"]] %in% gene_list[["12h"]] %>% table
+## test both directions
+res_xtab_dir <- lapply(res_tabs, function(x) table(x$FUS_target, x$DE_dir))
+res_xtab_dir[["0h"]] <- NULL
+res_xtab_dir
+fisher_res <- lapply(res_xtab_dir, function(x) fisher.test(x, alternative = "greater"))
+fisher_res
+chi_res <- lapply(res_xtab_dir, function(x) chisq.test(x,correct = FALSE))
+chi_res
+lapply(chi_res, function(x) x$expected)
 
-14780-4061
-fisher.test(matrix(c(76, 231, 4061, 10719), nrow = 2, byrow = TRUE), 
-            alternative = "greater")
-## 24h
-length(expr_sns) - length(gene_list[["24h"]])
-gene_list[["FUS"]] %in% gene_list[["24h"]] %>% table
-14780-460
-fisher.test(matrix(c(6, 301, 460, 14320), nrow = 2, byrow = TRUE), 
-            alternative = "greater")
+## merge all timepoints and consider gene DE if it is DE at any time point
+res_merged <- res_tabs[["12h"]]
+res_merged <- res_merged %>% as.data.frame() %>%
+  dplyr::mutate(DE = ifelse(res_tabs[["8h"]]$DE == "DE" | DE == "DE" | 
+                              res_tabs[["24h"]]$DE == "DE",  "DE", "not DE"),
+                DE_up = ifelse(res_tabs[["8h"]]$DE_up == "DE up" | 
+                        DE_up == "DE up" | res_tabs[["24h"]]$DE_up == "DE up",
+                        "DE up", "not DE up"))
+res_xtab_merged <- table(res_merged$FUS_target, res_merged$DE)
+res_xtab_merged
+fisher_res <- fisher.test(res_xtab_merged, alternative = "greater")
+fisher_res
+chi_res <- chisq.test(res_xtab_merged, correct = FALSE)
+chi_res
+chi_res$expected
+
+## up
+res_xtab_m_up <- table(res_merged$FUS_target, res_merged$DE_up)
+res_xtab_m_up
+fisher_res <- fisher.test(res_xtab_m_up, alternative = "greater")
+fisher_res
+chi_res <- chisq.test(res_xtab_m_up, correct = FALSE)
+chi_res
+chi_res$expected
+
+
+## combine the stability assay data with the 6mo SNS RNA-seq and test 
+## for enrichment of FUS targets in the upregulated genes
+res_merged_6mo <- res_merged %>% 
+  left_join(rowData(sg_sns)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"] %>% 
+              as.data.frame() %>%
+              dplyr::select(gene_id, logFC, logCPM, FDR) %>%
+              dplyr::mutate(DE = ifelse(FDR <= 0.05, "DE", "not DE"),
+                            DE_up = ifelse(FDR <= 0.05, ifelse(logFC > 0, 
+                                          "DE up", "not DE up"), "not DE up")), 
+            by = "gene_id", suffix = c(".stab", ".SNS")) %>%
+  dplyr::mutate(DE_merged = ifelse(DE.stab == "DE" | DE.SNS == "DE", "DE", "not DE"),
+                DE_up_merged = ifelse(DE_up.stab == "DE up" | DE_up.SNS == "DE up", 
+                                      "DE up", "not DE up"))
+## DE
+res_xtab_6mo <- table(res_merged_6mo$FUS_target, res_merged_6mo$DE_merged)
+res_xtab_6mo
+fisher_res <- fisher.test(res_xtab_6mo, alternative = "greater")
+fisher_res
+chi_res <- chisq.test(res_xtab_6mo, correct = FALSE)
+chi_res
+chi_res$expected
+
+## up
+res_xtab_6mo_up <- table(res_merged_6mo$FUS_target, res_merged_6mo$DE_up_merged)
+res_xtab_6mo_up
+fisher_res <- fisher.test(res_xtab_6mo_up, alternative = "greater")
+fisher_res
+chi_res <- chisq.test(res_xtab_6mo_up, correct = FALSE)
+chi_res
+chi_res$expected
+
+## only 6mo RNA up vs FUS targets
+## 
 ```
 
 
@@ -760,13 +865,17 @@ Is the change in expression in the stability experiment the same as in the RNA-s
 ```{r logFC-comparison-RNAseq}
 for (n in names(res_tables)) {
   d <- res_tables[[n]]
-  x_range <- c(min(d$logFC.SNS, d$logFC.stab), max(d$logFC.SNS, d$logFC.stab))
+  # x_range <- c(min(d$logFC.SNS, d$logFC.stab), max(d$logFC.SNS, d$logFC.stab))
   p <- ggplot(d, aes(x = logFC.SNS,  y = logFC.stab)) + 
-    geom_point(alpha = 0.8, size = 3) + 
-    theme_bw(base_size = 20) + ggtitle(n) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_point(alpha = 0.8, size = 3, color = "steelblue3") + 
+    theme_bw(base_size = 20) + 
     theme(aspect.ratio = 1) +
-    scale_x_continuous(limits = x_range, name = "logFC(KI-WT) SNS 6-month-old") + 
-    scale_y_continuous(limits = x_range, "logFC(KI-WT) actinomycin D treated")
+    scale_x_continuous(name = "logFC(KI-WT) SNS 6-month-old") + 
+    scale_y_continuous(paste0("logFC(KI-WT) stability assay ", n)) +
+    stat_cor(method = "pearson", cor.coef.name = "R") + 
+    geom_smooth(method="lm", se = TRUE, color = "darkgrey")
   print(p)
   ggsave(here("analysis", "figures", "final", 
               paste0("stability_logFC_vs_6moSNS_logFC_", n, ".png")),
@@ -784,9 +893,24 @@ res_12 <- res_all[["12h"]] %>% as.data.frame() %>%
               dplyr::select(gene_id, logFC, logCPM, FDR), 
             by = "gene_id", suffix = c(".stab", ".SNS"))
 
-  ggplot(res_12, aes(x = logFC.SNS,  y = logFC.stab)) + 
-  geom_point(alpha = 0.8) + 
-  theme_bw() 
+ggplot(res_12, aes(x = logFC.SNS,  y = logFC.stab)) + 
+geom_point(alpha = 0.8) + 
+theme_bw() +
+stat_cor(method = "pearson", cor.coef.name = "R")
+```
+
+All DE genes at 12h:
+```{r}
+res_12 <- res[["12h"]] %>% as.data.frame() %>%
+  left_join(rowData(sg_sns)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"] %>% 
+              as.data.frame() %>%
+              dplyr::select(gene_id, logFC, logCPM, FDR), 
+            by = "gene_id", suffix = c(".stab", ".SNS"))
+
+ggplot(res_12, aes(x = logFC.SNS,  y = logFC.stab)) + 
+geom_point(alpha = 0.8) + 
+theme_bw() +
+stat_cor(method = "pearson", cor.coef.name = "R")
 ```
 
 
@@ -1560,10 +1684,62 @@ for(d in names(df_list3)){
 saveRDS(df_list3_long, here("Rmd", "rds", "3cluster_transcript_length.rds"))
 ```
 
+Combine the up and down DE genes in one figure.
+```{r cluster3-transript-length-combined-plot, warning = FALSE}
+df_tmp <- rbind(df_list3[["up"]] %>% dplyr::mutate(direction = "up"), 
+                df_list3[["down"]] %>% dplyr::mutate(direction = "down"))
+df_tmp <- df_tmp %>% dplyr::select(gene_id, cluster_id, FUS_target, direction) %>%
+  left_join(trl, by = "gene_id") %>% 
+  tidyr::gather(key = "measure", value = "length", 
+                -cluster_id, -gene_id, -FUS_target, -direction) %>%
+  dplyr::mutate(cluster_id = factor(cluster_id), 
+                RNAs = forcats::fct_recode(factor(direction), 
+                                    "increased" = "up", "decreased" = "down"),
+                measure = forcats::fct_recode(factor(measure), 
+                            "transcript" = "max_tx_len", "CDS" = "max_cds_len", 
+                            "UTR3" = "max_utr3_len", "UTR5" = "max_utr5_len"))
+p <- ggplot(df_tmp, aes(x = cluster_id, y = length, fill = RNAs)) +
+  geom_violin(alpha = 0.4) +
+  geom_boxplot(alpha = 1, outlier.shape = NA, width=0.3, fill = "white") + scale_y_log10() +
+  theme_light(base_size = 16) + 
+  guides(alpha = FALSE) +
+  facet_grid(vars(measure), vars(RNAs), scale = "free_y") +
+  xlab("cluster") + ylab("length (nts)") +
+  scale_fill_manual(values = c("#117733", "#882255")) +
+  theme(strip.background = element_rect(fill = "white"), 
+      strip.text.x = element_text(colour = "black", face = "bold"),
+      strip.text.y = element_text(colour = "black", face = "bold"),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank())
+print(p)  
+ggsave(here("analysis", "figures", "final", paste0("boxplot_3cluster_transcript_length_up_down.png")),
+     p, width = 5, height = 6, dpi = 500, type = "cairo")
+
+## not split by cluster
+p <- ggplot(df_tmp, aes(x = RNAs, y = length, fill = RNAs)) +
+  geom_violin(alpha = 0.4) +
+  geom_boxplot(alpha = 1, outlier.shape = NA, width=0.3, fill = "white") + scale_y_log10() +
+  theme_light(base_size = 16) + 
+  guides(alpha = FALSE, fill = FALSE) +
+  facet_grid(vars(measure), scale = "free_y") +
+  xlab("RNAs") + ylab("length (nts)") +
+  scale_fill_manual(values = c("#117733", "#882255")) +
+  theme(strip.background = element_rect(fill = "white"), 
+      strip.text.x = element_text(colour = "black", face = "bold"),
+      strip.text.y = element_text(colour = "black", face = "bold"),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank())
+print(p)  
+ggsave(here("analysis", "figures", "final", paste0("boxplot_transcript_length_up_down.png")),
+     p, width = 3.3, height = 6, dpi = 500, type = "cairo")
+```
+
 
 ## Test for significance
 
 We test for differences in the length distribution with ANOVA and Tukeys post-hoc test.
+
+
 
 ```{r transcript-length-cluster-ANOVA}
 ## We first check the assumption that the distributions have homogenous 
@@ -1579,7 +1755,7 @@ a <- lapply(c("transcript", "CDS", "UTR3", "UTR5"), function(x) {
 names(a) <- c("transcript", "CDS", "UTR3", "UTR5")
 a
 ## for some of the clusters and measures, the variances are not homogeneous.
-## ANOVA is affected by unqual sample sizes and that is the case here, 
+## ANOVA is affected by unequal sample sizes and that is the case here, 
 ## so we shouldn't overinterpret the results
 
 ## ANOVA
@@ -1605,6 +1781,22 @@ names(test_res) <- names(df_list3_long)
 test_res
 
 saveRDS(test_res, here("Rmd", "rds", "anova_res.rds"))
+
+## test for difference between increased and decreased RNAs
+## we use an unpaired t-test
+options(dplyr.summarise.inform = FALSE)
+lapply(c("transcript", "CDS", "UTR3", "UTR5"), function(x) {
+  tmp <- df_tmp %>% dplyr::filter(measure == x & length > 0) 
+  print(x)
+  print(table(tmp$direction))
+  print(tmp %>% dplyr::group_by(direction) %>% 
+          dplyr::summarise(median = median(length), mean = mean(length)))
+  t.test(length ~ direction, data = tmp, alternative = "less", var.equal = FALSE)
+})
+
+  # print(shapiro.test(tmp[tmp$direction == "up", "length"]))
+  # print(shapiro.test(tmp[tmp$direction == "down", "length"]))
+  # wilcox.test(length ~ direction, data = tmp, alternative = "less", paired = FALSE)
 ```
 
 
