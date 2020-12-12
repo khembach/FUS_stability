@@ -2326,7 +2326,29 @@ ggsave(filename = here("analysis", "figures", "final", "volcano_MS3_FUS_targets.
        plot = p, width = 6, height = 6, type = "cairo", 
        dpi = 500)
 
+## label the proteins that were tested in figure 3 Synapsin1, VGAT, Gabra3 and GLUN1=Grin1
+## and FUS and Kif5a
+## VGAT synonyms: Slc32a1, R75019, VGAT, Viaat
+## we use the same names as in Figure 3
+label_ids <- genes$gene_id[genes$gene_name %in% 
+                             c("Fus", "Kif5a", "Syn1", "Slc32a1", "Gabra3", "Grin1")]
+names(label_ids) <- gtf$gene_name[match(label_ids, gtf$gene_id )]
+label_ids <- label_ids[c("Fus", "Kif5a", "Syn1", "Slc32a1", "Gabra3", "Grin1")]
+names(label_ids) <- c("FUS", "KIF5A", "Synapsin1", "VGAT", "GABRA3", "GluN1")
 
-
+## convert to gene_ids
+repel <- ms %>% dplyr::filter(gene_id %in% label_ids) %>% 
+  dplyr::arrange(factor(gene_id, levels = label_ids)) %>%
+  mutate(protein_name = names(label_ids)) 
+p <- p + geom_text_repel(data = repel %>% dplyr::filter(log2FC < 0), 
+                         aes(label = protein_name), xlim = c(NA, -2),
+                         segment.color = "grey30", show.legend = FALSE) +
+  geom_text_repel(data = repel %>% dplyr::filter(log2FC > 0), 
+                         aes(label = protein_name), xlim = c(2, NA),
+                         segment.color = "grey30", show.legend = FALSE)
+ 
+ggsave(filename = here("analysis", "figures", "final", "volcano_MS3_FUS_targets_labelled.png"), 
+       plot = p, width = 6, height = 6, type = "cairo", 
+       dpi = 500)
 ```
 
