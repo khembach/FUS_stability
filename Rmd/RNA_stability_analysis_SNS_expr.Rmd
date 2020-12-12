@@ -42,6 +42,7 @@ library(car)
 library(scales)
 library(ggsci)
 library(ggpubr)
+library(UniProt.ws)
 ```
 
 
@@ -722,8 +723,10 @@ res_tabs <- lapply(res_all, function(x) {
   x$direction <- (x$logFC > 0) %>% ifelse("up", "down")
   x$DE_dir <- ifelse(x$DE == "DE", 
                      ifelse(x$direction == "up", "DE up", "DE down"), "not DE")
-  x$DE_up <- ifelse(x$DE == "DE", 
-                     ifelse(x$direction == "up", "DE up", "not DE up"), "not DE up")
+  x$DE_up <- ifelse(x$DE == "DE", ifelse(x$direction == "up", 
+                                         "DE up", "not DE up"), "not DE up")
+  x$DE_down <- ifelse(x$DE == "DE", ifelse(x$direction == "down", 
+                                      "DE down", "not DE down"), "not DE down")
   x})
 ## test of FUS targets among all DE genes
 res_xtab <- lapply(res_tabs, function(x) table(x$FUS_target, x$DE))
@@ -761,7 +764,10 @@ res_merged <- res_merged %>% as.data.frame() %>%
                               res_tabs[["24h"]]$DE == "DE",  "DE", "not DE"),
                 DE_up = ifelse(res_tabs[["8h"]]$DE_up == "DE up" | 
                         DE_up == "DE up" | res_tabs[["24h"]]$DE_up == "DE up",
-                        "DE up", "not DE up"))
+                        "DE up", "not DE up"),
+                DE_down = ifelse(res_tabs[["8h"]]$DE_down == "DE down" | 
+                        DE_down == "DE down" | res_tabs[["24h"]]$DE_down == "DE down",
+                        "DE down", "not DE down"))
 res_xtab_merged <- table(res_merged$FUS_target, res_merged$DE)
 res_xtab_merged
 fisher_res <- fisher.test(res_xtab_merged, alternative = "greater")
@@ -779,31 +785,51 @@ chi_res <- chisq.test(res_xtab_m_up, correct = FALSE)
 chi_res
 chi_res$expected
 
-
-## combine the stability assay data with the 6mo SNS RNA-seq and test 
-## for enrichment of FUS targets in the upregulated genes
-res_merged_6mo <- res_merged %>% 
-  left_join(rowData(sg_sns)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"] %>% 
-              as.data.frame() %>%
-              dplyr::select(gene_id, logFC, logCPM, FDR) %>%
-              dplyr::mutate(DE = ifelse(FDR <= 0.05, "DE", "not DE"),
-                            DE_up = ifelse(FDR <= 0.05, ifelse(logFC > 0, 
-                                          "DE up", "not DE up"), "not DE up")), 
-            by = "gene_id", suffix = c(".stab", ".SNS")) %>%
-  dplyr::mutate(DE_merged = ifelse(DE.stab == "DE" | DE.SNS == "DE", "DE", "not DE"),
-                DE_up_merged = ifelse(DE_up.stab == "DE up" | DE_up.SNS == "DE up", 
-                                      "DE up", "not DE up"))
-## DE
-res_xtab_6mo <- table(res_merged_6mo$FUS_target, res_merged_6mo$DE_merged)
-res_xtab_6mo
-fisher_res <- fisher.test(res_xtab_6mo, alternative = "greater")
+## down
+res_xtab_m_down <- table(res_merged$FUS_target, res_merged$DE_down)
+res_xtab_m_down
+fisher_res <- fisher.test(res_xtab_m_down, alternative = "greater")
 fisher_res
-chi_res <- chisq.test(res_xtab_6mo, correct = FALSE)
+chi_res <- chisq.test(res_xtab_m_down, correct = FALSE)
 chi_res
 chi_res$expected
 
+## merge with the 6mmo SNS RNA-seq without filtering, keep all genes that were considered in the analysis
+##only 6mo RNA up vs FUS targets
+res_merged_6mo_all <- res_merged %>% 
+  full_join(rowData(sg_sns)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"] %>% 
+              as.data.frame() %>% dplyr::filter(!is.na(FDR)) %>%
+              dplyr::select(gene_id, logFC, logCPM, FDR) %>%
+              dplyr::mutate(DE = ifelse(FDR <= 0.05, "DE", "not DE"),
+                            DE_up = ifelse(FDR <= 0.05, ifelse(logFC > 0, 
+                                          "DE up", "not DE up"), "not DE up"),
+                            DE_down = ifelse(FDR <= 0.05, ifelse(logFC < 0, 
+                                          "DE down", "not DE down"), "not DE down")), 
+            by = "gene_id", suffix = c(".stab", ".SNS")) %>%
+  dplyr::mutate(DE.stab = replace(DE.stab, NA, "NA"),
+                DE_up.stab = replace(DE_up.stab, is.na(DE_up.stab), "NA")) %>%
+  dplyr::mutate(DE_merged = ifelse(DE.stab == "DE" | DE.SNS == "DE", "DE", "not DE"),
+                DE_up_merged = ifelse(DE_up.stab == "DE up" | DE_up.SNS == "DE up", 
+                                      "DE up", "not DE up"),
+                DE_down_merged = ifelse(DE_down.stab == "DE down" | DE_down.SNS == "DE down", 
+                                      "DE down", "not DE down"),
+                FUS_target = ifelse(gene_id %in% targets$gene_id, "FUS target", "no target"))
+
+dim(res_merged_6mo_all)
+##
+res_xtab_6mo_only_up <- table(res_merged_6mo_all$FUS_target, res_merged_6mo_all$DE_up.SNS)
+res_xtab_6mo_only_up
+fisher_res <- fisher.test(res_xtab_6mo_only_up, alternative = "greater")
+fisher_res
+
+res_xtab_6mo_only_down <- table(res_merged_6mo_all$FUS_target, res_merged_6mo_all$DE_down.SNS)
+res_xtab_6mo_only_down
+fisher_res <- fisher.test(res_xtab_6mo_only_down, alternative = "greater")
+fisher_res
+
+## DE from both experiments combined
 ## up
-res_xtab_6mo_up <- table(res_merged_6mo$FUS_target, res_merged_6mo$DE_up_merged)
+res_xtab_6mo_up <- table(res_merged_6mo_all$FUS_target, res_merged_6mo_all$DE_up_merged)
 res_xtab_6mo_up
 fisher_res <- fisher.test(res_xtab_6mo_up, alternative = "greater")
 fisher_res
@@ -811,9 +837,75 @@ chi_res <- chisq.test(res_xtab_6mo_up, correct = FALSE)
 chi_res
 chi_res$expected
 
-## only 6mo RNA up vs FUS targets
-## 
+## down
+res_xtab_6mo_down <- table(res_merged_6mo_all$FUS_target, res_merged_6mo_all$DE_down_merged)
+res_xtab_6mo_down
+fisher_res <- fisher.test(res_xtab_6mo_down, alternative = "greater")
+fisher_res
+chi_res <- chisq.test(res_xtab_6mo_down, correct = FALSE)
+chi_res
+chi_res$expected
 ```
+
+
+## Venn diagram for enrichment
+
+```{r venn-enrichment}
+## stability assay
+venn_diag_stab <- euler(list("decreased" = res_merged %>% 
+                        dplyr::filter(DE_down == "DE down") %>% pull(gene_id), 
+                        "FUS targets" = res_merged %>% 
+                    dplyr::filter(FUS_target == "FUS target") %>% pull(gene_id), 
+                        "increased" = res_merged %>% 
+                        dplyr::filter(DE_up == "DE up") %>% pull(gene_id)),
+                    shape = "circle")
+
+eulerr_options(labels = list(fontsize = 20), 
+               quantities = list(fontsize = 20, font = 2), 
+               fills = list(alpha = 0.5),
+               padding = unit(0.6, "lines"))
+
+p <- plot(venn_diag_stab, font=1, 
+     fills=c("#117733","steelblue3", "#882255"),
+     edges=c("#117733","steelblue3", "#882255"),
+     # labels = list(col = c("#117733","steelblue4", "#882255")),
+     labels = FALSE,
+     quantities = TRUE,
+     alpha=0.6, lwd = 4, adjust_labels = FALSE)
+p
+pdf(here("analysis", "figures", "final", "Euler_stability_FUS_targets_down_up.pdf"), 
+    width = 5.5, height = 6)
+p
+dev.off()
+
+
+## DE genes from both stability assay and 6mo SNS
+venn_diag_stab <- euler(list("decreased" = res_merged_6mo_all %>% 
+                        dplyr::filter(DE_down_merged == "DE down") %>% pull(gene_id), 
+                        "FUS targets" = targets$gene_id, 
+                        "increased" = res_merged_6mo_all %>% 
+                        dplyr::filter(DE_up_merged == "DE up") %>% pull(gene_id)),
+                    shape = "circle")
+
+eulerr_options(labels = list(fontsize = 20), 
+               quantities = list(fontsize = 20, font = 2), 
+               fills = list(alpha = 0.5),
+               padding = unit(0.6, "lines"))
+
+p <- plot(venn_diag_stab, font=1, 
+     fills=c("#117733","steelblue3", "#882255"),
+     edges=c("#117733","steelblue3", "#882255"),
+     # labels = list(col = c("#117733","steelblue4", "#882255")),
+     labels = FALSE,
+     quantities = TRUE,
+     alpha=0.6, lwd = 4, adjust_labels = FALSE)
+p
+pdf(here("analysis", "figures", "final", "Euler_stability_6mo_FUS_targets_down_up.pdf"), 
+    width = 5.5, height = 6)
+p
+dev.off()
+```
+
 
 
 ## List of overlapping genes
@@ -1901,5 +1993,340 @@ p
 ggsave(here("analysis", "figures", "final", 
             "boxplot_number_peaks_unchanged_12h.png"),
        p, width = 5, height = 4, dpi = 300, type = "cairo")
+```
+
+
+# Comparison with MS data
+
+We compare the logFCs from the stability assay and the 6 months RNA-seq with the mass spec analysis from SNS.
+
+```{r import-MS3}
+ms_file <- here("mass_spec", "MQ_2grp_SNS_FUSKI_vs_WT_q005_fc1.csv")
+ms <- read.csv(ms_file, header = TRUE)
+```
+
+
+We remove all REV_ (revers) and Cont (control) proteins.
+```{r prepare-MS3}
+ms <- ms %>% dplyr::filter(!grepl("^zz|^REV", proteinID)) 
+dim(ms)
+```
+
+We need to know the Swissprot IDs per protein group (ProteinName). We remove the tr IDs and only keep the sp IDs because they were used in the first experiment.
+```{r preapre-MS3-2}
+ms <- ms %>% dplyr::mutate(ID = 1:nrow(ms)) %>% separate_rows(ProteinName, sep = ";") %>%
+  dplyr::filter(!grepl("^tr|^zz|^REV|^CON", ProteinName))
+```
+
+We parse the protein name from the sp IDs
+```{r preapre-MS3-3}
+a <- str_split(ms$ProteinName, pattern = "\\|", simplify = TRUE)
+ms$SP <- a[,2]
+ms$protein_name <- a[,3] %>% str_remove(pattern = "_MOUSE")
+```
+
+We match the Uniprot IDs to the gene names
+```{r match-MS3-ids}
+# availableUniprotSpecies(pattern="musculus")
+unip <- UniProt.ws(taxId=10090)
+
+# keytypes(up)
+## get the Ensembl gene ID for each UniprotID
+utab <- select(unip, keys = ms$SP,
+              columns = "ENSEMBL",
+              keytype = "UNIPROTKB")
+colnames(utab) <- c("SP", "gene_id")
+
+## merge the two tables (some Uniprot IDs have more than one Ensembl ID!)
+ms  <- ms %>% dplyr::left_join(utab, by = "SP") 
+
+## convert Protein names to gene names
+## all proteins with missing ensembl ID
+indx <- which(is.na(ms$gene_id))
+
+missing <- data.frame(protein = ms$protein_name[indx], 
+                      gene = stringr::str_to_title(ms$protein_name[indx]))
+
+missing_ensembl <- getBM(attributes = c("ensembl_gene_id", "uniprot_gn_symbol"), 
+                         values = missing$gene, 
+                         mart = ensembl, 
+                         filter = "uniprot_gn_symbol") 
+
+## match the gene symbol to the protein names
+missing <- missing_ensembl %>% dplyr::left_join(missing, by = c("uniprot_gn_symbol" = "gene"))
+ms <- ms %>% dplyr::left_join(missing %>% 
+                          dplyr::select(ensembl_gene_id, protein), 
+                        by = c("protein_name" = "protein"))
+ms$gene_id[is.na(ms$gene_id)] <- ms$ensembl_gene_id[is.na(ms$gene_id)]
+ms$ensembl_gene_id <- NULL
+is.na(ms$gene_id) %>% table ## now we are only missing a few gene ids
+```
+
+
+We also import the first two MS experiments. 
+```{r read-MS-1-2}
+ms1 <- "/home/Shared_taupo/data/seq/sonu_RNAseq/polyA_Aug2019/mass_spec/MQ_report_RNAseq_CLIPtargets.txt"
+ms2 <- "/home/Shared_taupo/data/seq/sonu_RNAseq/polyA_Aug2019/mass_spec/MQ_report_experiment2_RNAseq_CLIPtargets.txt"
+ms1 <- read.table(ms1, header = TRUE, sep = "\t")
+ms2 <- read.table(ms2, header = TRUE, sep = "\t")
+```
+
+
+We match the MS data with the stability assay and the 6 months SNS RNA-seq
+
+
+```{r results-table}
+## merge all stability timepoints, the 6mo SNS and the MS data
+tab <- lapply(res_all, function(x) x[x$gene_id %in% expr_sns,] %>% 
+                as.data.frame())
+tab <- tab[[1]] %>% dplyr::select(gene_id, gene_name, logFC, logCPM, FDR) %>% 
+  full_join(tab[[2]] %>% dplyr::select(gene_id, logFC, logCPM, FDR), 
+            by = c("gene_id"), suffix = c(".0h", ".8h")) %>%
+  full_join(tab[[3]] %>% dplyr::select(gene_id, logFC, logCPM, FDR) %>% 
+              dplyr::rename(logFC.12h = logFC, logCPM.12h = logCPM, FDR.12h = FDR), 
+            by = "gene_id") %>%
+  full_join(tab[[4]] %>% dplyr::select(gene_id, logFC, logCPM, FDR) %>%
+              dplyr::rename(logFC.24h = logFC, logCPM.24h = logCPM, FDR.24h = FDR), 
+            by = "gene_id") %>%
+  full_join(rowData(sg_sns)[,"edgeR:groupSNS.KI.6_mo-groupSNS.WT.6_mo"] %>% 
+              as.data.frame() %>% 
+              dplyr::select(gene_id, logFC, logCPM, FDR) %>%
+              dplyr::filter(!is.na(FDR) & gene_id %in% expr_sns) %>%
+              dplyr::rename(logFC.SNS6mo = logFC, logCPM.SNS6mo = logCPM, 
+                            FDR.SNS6mo = FDR), 
+            by = "gene_id") %>%
+  left_join(ms %>% dplyr::select(gene_id, ProteinName, log2FC, adj.P.Val) %>% 
+              dplyr::rename(logFC.MS3 = log2FC, adj.P.Val.MS3 = adj.P.Val), 
+            by = "gene_id") %>%
+  left_join(ms1 %>% dplyr::select(gene_id, ProteinName, log2FC_MS, adj.P.Val) %>% 
+              dplyr::rename(logFC.MS1 = log2FC_MS, adj.P.Val.MS1 = adj.P.Val), 
+            by = "gene_id") %>%
+  left_join(ms2 %>% dplyr::select(gene_id, ProteinName, log2FC_MS, adj.P.Val) %>% 
+              dplyr::rename(logFC.MS2 = log2FC_MS, adj.P.Val.MS2 = adj.P.Val), 
+            by = "gene_id") 
+dim(tab)
+## label the SNS FUS targets
+tab <- tab %>% dplyr::mutate(FUS_target = gene_id %in% targets$gene_id)
+
+## export the table to a file.
+saveRDS(tab, here("Rmd", "rds", "stability_6mo_MS_results_tab.rds"))
+write.table(tab, file = here("analysis", "stability_6mo_MS_results_tab.txt"), 
+            quote = FALSE, row.names = FALSE, sep = "\t")
+## Table with only the FUS targets, sorted by MS and RNA-seq log2FC
+write.table(tab %>% dplyr::filter(FUS_target), 
+            file = here("analysis", "stability_6mo_MS_results_tab_FUS_targets.txt"), 
+            quote = FALSE, row.names = FALSE, sep = "\t")
+```
+
+Now we can compare the logFCs of the different experiments.
+```{r logFC-comparison-scatterplots, message = FALSE}
+scatterplot_logFC <- function(tab, x = "logFC.0h", y = "logFC.8h", filter_FUS = FALSE, color = "black"){
+  if (filter_FUS){
+    tab <- tab %>% dplyr::filter(FUS_target)
+  } 
+  p <- ggplot(tab, aes_string(x = x,  y = y)) + 
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    geom_point(alpha = 0.7, size = 3, color = color) + 
+    theme_bw(base_size = 20) + 
+    theme(aspect.ratio = 1) +
+    stat_cor(method = "pearson", cor.coef.name = "R") + 
+    geom_smooth(method="lm", formula = y ~ x, se = TRUE, color = "darkgrey")
+  print(p)
+  p
+}
+
+p <- scatterplot_logFC(tab, "logFC.0h", "logFC.8h")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_0h_8h.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.8h", "logFC.12h")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_8h_12h.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.12h", "logFC.24h")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_12h_24h.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.12h", "logFC.SNS6mo")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_12h_SNS6mo.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+
+## SNS6mo vs MS
+p <- scatterplot_logFC(tab, "logFC.SNS6mo", "logFC.MS1")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_SNS6mo_MS1.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.SNS6mo", "logFC.MS2")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_SNS6mo_MS2.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.SNS6mo", "logFC.MS3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_SNS6mo_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+
+# DE genes
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.SNS6mo <= 0.05), 
+                       "logFC.SNS6mo", "logFC.MS1")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_SNS6mo_DE_MS1.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.SNS6mo <= 0.05), 
+                       "logFC.SNS6mo", "logFC.MS2")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_SNS6mo_DE_MS2.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.SNS6mo <= 0.05), 
+                       "logFC.SNS6mo", "logFC.MS3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_SNS6mo_DE_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+
+# FUS targets
+p <- scatterplot_logFC(tab, "logFC.SNS6mo", "logFC.MS1", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_SNS6mo_MS2.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.SNS6mo", "logFC.MS2", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_SNS6mo_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.SNS6mo", "logFC.MS3", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_SNS6mo_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+
+## 12h vs. MS
+p <- scatterplot_logFC(tab, "logFC.12h", "logFC.MS1",
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_12h_MS1.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.12h", "logFC.MS2",
+                       filter_FUS = TRUE, color = "steelblue3")
+p
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_12h_MS2.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.12h", "logFC.MS3",
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_12h_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+
+## MS vs. MS
+p <- scatterplot_logFC(tab, "logFC.MS1", "logFC.MS2")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_MS1_MS2.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.MS1", "logFC.MS3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_MS1_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab, "logFC.MS2", "logFC.MS3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_logFC_MS2_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+
+## subset the DE genes
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.SNS6mo <= 0.05), 
+                       "logFC.SNS6mo", "logFC.MS1", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_SNS6mo_DE_MS1.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.SNS6mo <= 0.05), 
+                       "logFC.SNS6mo", "logFC.MS2", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_SNS6mo_DE_MS2.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.SNS6mo <= 0.05), 
+                       "logFC.SNS6mo", "logFC.MS3", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_SNS6mo_DE_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.8h <= 0.05), 
+                       "logFC.8h", "logFC.MS3", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_8h_DE_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.12h <= 0.05), 
+                       "logFC.12h", "logFC.MS3", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_12h_DE_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.24h <= 0.05), 
+                       "logFC.24h", "logFC.MS3", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_24h_DE_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+
+## not DE genes
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.SNS6mo > 0.05), 
+                       "logFC.SNS6mo", "logFC.MS1", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_SNS6mo_notDE_MS1.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.SNS6mo > 0.05), 
+                       "logFC.SNS6mo", "logFC.MS2", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_SNS6mo_notDE_MS2.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+p <- scatterplot_logFC(tab %>% dplyr::filter(FDR.SNS6mo > 0.05), 
+                       "logFC.SNS6mo", "logFC.MS3", 
+                       filter_FUS = TRUE, color = "steelblue3")
+ggsave(here("analysis", "figures", "final", 
+            paste0("scatterplot_FUS_targets_logFC_SNS6mo_notDE_MS3.png")),
+       p, width = 5, height = 5, dpi = 300, type = "cairo")
+```
+
+Correlation matrix
+```{r pairwise-correlation-comparison-plot}
+pairs(tab %>% dplyr::select() )
+```
+
+Volcano plot for the 3rd MS experiment.
+```{r volcano-plot-MS3}
+file_name <- here("analysis", "figures", "final", "volcano_MS3_FUS_targets.png")
+ms$cols <- as.factor(ifelse(ms$gene_id %in% targets$gene_id, "FUS target",
+                              ifelse(ms$adj.P.Val <= 0.05, 
+                                     ifelse(ms$log2FC > 0, "adj. p-value \u2264 0.05 & logFC > 0",  
+                                            "adj. p-value \u2264 0.05 & logFC < 0"), "adj. p-value > 0.05")))
+ms$mlog10Pval <- -log10(ms$P.Value)
+
+p <-  ggplot(ms, aes(x = log2FC, y = mlog10Pval, color = cols)) + 
+  geom_point(data = ms %>% dplyr::arrange(cols), alpha = 0.8) +
+  scale_color_manual(values = c("FUS target" = "steelblue3",
+                                "adj. p-value > 0.05" = "darkgrey",
+                                "adj. p-value \u2264 0.05 & logFC > 0" = "#882255",
+                                "adj. p-value \u2264 0.05 & logFC < 0" = "#117733")) +
+  theme_bw() + theme(text = element_text(size = 16)) +
+  ylab("-log10(p-value)") +
+  theme(aspect.ratio = 1, legend.title=element_blank(), 
+        legend.position = "bottom", legend.direction="horizontal", 
+        legend.box = "horizontal") +
+  # geom_hline(yintercept = -log10(0.05), linetype="dashed", color = "black")  +
+  # geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  xlab("log2 fold change") +
+  guides(color=guide_legend(nrow=2,byrow=TRUE))
+
+ggsave(filename = here("analysis", "figures", "final", "volcano_MS3_FUS_targets.png"), 
+       plot = p, width = 6, height = 6, type = "cairo", 
+       dpi = 500)
+
+
+
 ```
 
