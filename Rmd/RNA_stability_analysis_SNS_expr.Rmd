@@ -491,18 +491,16 @@ for (s in names(ora_res)) {
 We plot the results of as circle plots with the most important terms from all three ontologies.
 ```{r ORA-res-plot-combined}
 ora_circle_plot <- function(df_comb, repel_xlim = c(9.7, 41), box.padding = 0.8,
-                            ylab = "log2(increased genes with GO term)",
-                            xrange = NULL, yrange = NULL){
-  ggplot(df_comb, aes(x = -log10(P.DE), y = log2(DE), size = log2(N), fill = Ont)) + 
+                            ylab = "log2(increased RNAs at 12h)", xrange = NULL, 
+                            yrange = NULL, label = TRUE, axis_label = TRUE){
+  p <- ggplot(df_comb, aes(x = -log10(P.DE), y = log2(DE), size = log2(N), 
+                           fill = Ont)) + 
   geom_point(shape = 21, alpha = 0.8)  +
   theme_bw() +
   theme(text = element_text(size = 20), 
         aspect.ratio = 1, 
         legend.position = "bottom", legend.direction="horizontal", 
         legend.box = "horizontal")  +
-  geom_text_repel(aes(label=Term), size=5, data=df_comb, color = "black", 
-                  point.padding = 0, box.padding = box.padding, 
-                  xlim = repel_xlim, force = 10, direction = "both", max.iter = 4000) +
   scale_size(breaks=pretty_breaks(4), range = c(3, 13)) +
   guides(size = guide_legend("log2(genes with GO term)", title.position = "top"),
          fill = guide_legend("Ontology", title.position = "top", 
@@ -510,6 +508,22 @@ ora_circle_plot <- function(df_comb, repel_xlim = c(9.7, 41), box.padding = 0.8,
   labs(x = "-log10(p-value)", y = ylab) +
   scale_fill_locuszoom() +
   scale_x_continuous(limits = xrange) + scale_y_continuous(limits = yrange)
+  
+  if (label) {
+  p <- p + 
+    geom_text_repel(aes(label=Term), size=5, data=df_comb, color = "black", 
+                  point.padding = 0, box.padding = box.padding, 
+                  xlim = repel_xlim, force = 10, direction = "both", max.iter = 4000)
+  }
+  if (!axis_label){
+    p <- p + theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())
+  }
+  p
 }
 
 ## 8h up
@@ -523,7 +537,7 @@ df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 9)[-c(1, 4:8),],
 df_comb$Term[4] <- "nervous system\ndevelopment"
 df_comb$Term[6] <- "movement of cell or\nsubcellular component"
 p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.9,
-                     ylab = "log2(increased genes with GO term)")
+                     ylab = "log2(increased RNAs at 8h")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
@@ -537,7 +551,7 @@ df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 3),
                  topGO(ora_res[[s]], ontology = "BP", number = 3)[-2,],
                  topGO(ora_res[[s]], ontology = "MF", number = 2))
 p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8,
-                     ylab = "log2(decreased genes with GO term)")
+                     ylab = "log2(decreased RNAs at 8h")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
@@ -551,7 +565,7 @@ df_comb_up <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 7)[-c(2, 5),],
                  topGO(ora_res[[s]], ontology = "BP", number = 10)[-c(2, 3, 5, 7:9),],
                  topGO(ora_res[[s]], ontology = "MF", number = 4)[-c(2:3),])
 p <- ora_circle_plot(df_comb_up, repel_xlim = NA, box.padding = 0.8,
-                     ylab = "log2(increased genes with GO term)")
+                     ylab = "log2(increased RNAs at 12h)")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
@@ -565,7 +579,7 @@ df_comb_down <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 7)[-c(3:5),]
                  topGO(ora_res[[s]], ontology = "BP", number = 9)[-c(3, 5:8),],
                  topGO(ora_res[[s]], ontology = "MF", number = 7)[-c(4, 6),])
 p <- ora_circle_plot(df_comb_down, repel_xlim = NA, box.padding = 0.8,
-                     ylab = "log2(decreased genes with GO term)")
+                     ylab = "log2(decreased RNAs at 12h)")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
@@ -578,15 +592,43 @@ yrange <- c(min(log2(df_comb_up$DE), log2(df_comb_down$DE)),
             max(log2(df_comb_up$DE), log2(df_comb_down$DE)))
 # df_comb_up$Term[9] <- "modulation of chemical\nsynaptic transmission"
 p <- ora_circle_plot(df_comb_up, repel_xlim = NA, box.padding = 0.7,
-                     ylab = "log2(increased genes with GO term)", 
+                     ylab = "log2(increased RNAs at 12h)", 
                      xrange = xrange, yrange = yrange)
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_12h_up_fixed_axes.png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
 p <- ora_circle_plot(df_comb_down, repel_xlim = NA, box.padding = 0.8,
-                     ylab = "log2(decreased genes with GO term)", 
+                     ylab = "log2(decreased RNAs at 12h)", 
                      xrange = xrange, yrange = yrange)
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, "_fixed_axes.png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
+
+
+## figure without the labels
+p <- ora_circle_plot(df_comb_up, repel_xlim = NA, box.padding = 0.7,
+                     ylab = "log2(increased RNAs at 12h)", 
+                     xrange = xrange, yrange = yrange, label = FALSE)
+ggsave(file = here("analysis", "figures", "final", paste0("ora_res_12h_up_fixed_axe_noLabels.png")), 
+       plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
+p <- ora_circle_plot(df_comb_down, repel_xlim = NA, box.padding = 0.8,
+                     ylab = "log2(decreased RNAs at 12h)", 
+                     xrange = xrange, yrange = yrange, label = FALSE)
+ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, "_fixed_axes_noLabels.png")), 
+       plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
+
+## figure without any text (no legend labels)
+p <- ora_circle_plot(df_comb_up, repel_xlim = NA, box.padding = 0.7,
+                     axis_label = FALSE, 
+                     xrange = xrange, yrange = yrange, label = FALSE)
+ggsave(file = here("analysis", "figures", "final", paste0("ora_res_12h_up_fixed_axe_noLabels_axis.png")), 
+       plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
+p <- ora_circle_plot(df_comb_down, repel_xlim = NA, box.padding = 0.8,
+                     axis_label = FALSE,
+                     xrange = xrange, yrange = yrange, label = FALSE)
+ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, "_fixed_axes_noLabels_axis.png")), 
+       plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
+
+
+
 
 
 ## 24h up
@@ -601,7 +643,7 @@ df_comb$Term[1] <- "proton-transporting ATP synthase complex,\ncoupling factor F
 df_comb$Term[4] <- "structural constituent of\npostsynaptic actin cytoskeleton"
 
 p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8,
-                     ylab = "log2(increased genes with GO term)")
+                     ylab = "log2(increased RNAs at 24h)")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
@@ -617,7 +659,7 @@ df_comb <- rbind(topGO(ora_res[[s]], ontology = "CC", number = 6)[-c(2, 4, 5),],
 df_comb$Term[6] <- "protein modification by\nsmall protein conjugation or removal"
 
 p <- ora_circle_plot(df_comb, repel_xlim = NA, box.padding = 0.8,
-                     ylab = "log2(decreased genes with GO term)")
+                     ylab = "log2(decreased RNAs at 24h)")
 p
 ggsave(file = here("analysis", "figures", "final", paste0("ora_res_", s, ".png")), 
        plot = p, width = 6.5, height = 7, dpi = 500, type = "cairo")
@@ -1557,7 +1599,7 @@ df_fus4 %>%
 
 # Hierarchical clustering results: 3 cluster
 
-We decided to use pearson correlation and ward.D linkage.
+We decided to use pearson correlation and average linkage.
 
 
 ```{r final-clustering-3cluster, warning = FALSE}
@@ -1944,7 +1986,7 @@ names(fus_peak_list_split) <- c("up_8h", "up_12h", "up_24h", "down_8h",
                                 "down_12h", "down_24h", "unchanged")
 p <- peak_gene_region_barplot_split(fus_peak_list_split, anno)
 p
-ggsave(here("analysis", "figures", "final", "barplot_peak_location.png"),
+ggsave(here("analysis", "figures", "final", "barplot_peak_location_color.png"),
        p, width = 8, height = 6, dpi = 300, type = "cairo")
 ```
 
@@ -2292,10 +2334,6 @@ ggsave(here("analysis", "figures", "final",
        p, width = 5, height = 5, dpi = 300, type = "cairo")
 ```
 
-Correlation matrix
-```{r pairwise-correlation-comparison-plot}
-pairs(tab %>% dplyr::select() )
-```
 
 Volcano plot for the 3rd MS experiment.
 ```{r volcano-plot-MS3}
@@ -2347,8 +2385,260 @@ p <- p + geom_text_repel(data = repel %>% dplyr::filter(log2FC < 0),
                          aes(label = protein_name), xlim = c(2, NA),
                          segment.color = "grey30", show.legend = FALSE)
  
-ggsave(filename = here("analysis", "figures", "final", "volcano_MS3_FUS_targets_labelled.png"), 
+ggsave(filename = here("analysis", "figures", "final", "volcano_MS3_FUS_targets_labeled.png"), 
        plot = p, width = 6, height = 6, type = "cairo", 
        dpi = 500)
+
+## only label Fus
+label_ids <- genes$gene_id[genes$gene_name == "Fus"]
+names(label_ids) <- "FUS"
+## convert to gene_ids
+repel <- ms %>% dplyr::filter(gene_id %in% label_ids) %>% 
+  dplyr::arrange(factor(gene_id, levels = label_ids)) %>%
+  mutate(protein_name = names(label_ids)) 
+p <- p + geom_text_repel(data = repel %>% dplyr::filter(log2FC < 0), 
+                         aes(label = protein_name), xlim = c(NA, -2),
+                         segment.color = "grey30", show.legend = FALSE) +
+  geom_text_repel(data = repel %>% dplyr::filter(log2FC > 0), 
+                         aes(label = protein_name), xlim = c(2, NA),
+                         segment.color = "grey30", show.legend = FALSE)
+ 
+ggsave(filename = here("analysis", "figures", "final", "volcano_MS3_FUS_labeled.png"), 
+       plot = p, width = 6, height = 6, type = "cairo", 
+       dpi = 500)
+```
+
+
+# Add stability data to supplementary table 1
+
+We add the results from the stability assay to the table.
+```{r add-stability-SupplFig1}
+supl_tab1 <- "/home/Shared_taupo/data/seq/sonu_CLIPseq/clip_March2018/analysis/deduplicated/MA_plot_selection/top_peaks_loess_adjM_pValue_1e-05_gene_anno_manually_filtered_cluster_location_classified_RNAseq_6m.txt"
+
+supl <- read.table(supl_tab1, header = TRUE)
+## remove mlog10PValue and contrast column
+supl <- supl %>% dplyr::select(-mlog10PValue, -contrast, -logCPM, -F)
+
+## add the stability data: logFC, FDR and P-value for all time points and 
+## summary: increased and decreased (any timepoint)
+# up_de <- unique(unlist(lapply(res_all, function(x)
+#   x %>% as.data.frame() %>%dplyr::filter(!is.na(FDR)) %>% dplyr::filter(FDR <= 0.05 & logFC > 0) %>% dplyr::pull(gene_id))))
+# down_de <- unique(unlist(lapply(res_all, function(x)
+#   x %>% as.data.frame() %>%dplyr::filter(!is.na(FDR)) %>% dplyr::filter(FDR <= 0.05 & logFC < 0) %>% dplyr::pull(gene_id))))
+
+up_de <- unique(unlist(lapply(res, function(x)
+  x[x$FDR <= 0.05 & x$logFC > 0, "gene_id"])))
+down_de <- unique(unlist(lapply(res, function(x)
+  x[x$FDR <= 0.05 & x$logFC < 0, "gene_id"])))
+
+supl <- supl %>% left_join(tab %>% 
+  dplyr::select(gene_id, logFC.0h, FDR.0h, logFC.8h, FDR.8h, logFC.12h,
+                FDR.12h, logFC.24h, FDR.24h), by = "gene_id") %>% unique  %>%
+  dplyr::mutate(stability = ifelse(gene_id %in% up_de, "increased", 
+                                   ifelse(gene_id %in% down_de, "decreased", "unchanged")))
+
+write.table(supl, here("analysis", "supplementary_table1.txt"), sep = "\t", 
+            quote = FALSE, row.names = FALSE)
+```
+
+
+## FUS binding in accumulated RNAs
+
+```{r peak-location-barplot-6mo}
+fus_peak_list_6mo <- list(accumulated = peaks[peaks$gene_id %in% (supl %>% dplyr::filter(RNAseq_DE == "up") 
+                         %>% pull(gene_id))],
+                         decreased = peaks[peaks$gene_id %in% (supl %>% dplyr::filter(RNAseq_DE == "down") 
+                         %>% pull(gene_id))],
+                         unchanged = peaks[peaks$gene_id %in% (supl %>% 
+                      dplyr::filter(RNAseq_DE == "unchanged") %>% pull(gene_id))])
+
+# names(fus_peak_list_split) <- c("up_8h", "up_12h", "up_24h", "down_8h", 
+#                                 "down_12h", "down_24h", "unchanged")
+p <- peak_gene_region_barplot_6mo(fus_peak_list_6mo, anno)
+p
+ggsave(here("analysis", "figures", "final", "barplot_peak_location_6mo.png"),
+       p, width = 8, height = 6, dpi = 300, type = "cairo")
+```
+
+
+### Combined plot with stability and accumulation
+
+```{r peak-location-barplot-combined}
+## we only show 12h, because the other groups have less than 20 peaks 
+lapply(fus_peak_list_split, length)
+## we only show the accumulated because there are too few decreased
+lapply(fus_peak_list_6mo,length)
+fus_peaks_list_combined <- c(fus_peak_list_split, fus_peak_list_6mo)
+lapply(fus_peaks_list_combined, length)
+names(fus_peaks_list_combined) <- c("up_8h", "up_12h", "up_24h", "down_8h",  
+                                    "down_12h", "down_24h", "unchanged_stability", 
+                                    "accumulated", "decreased", "unchanged_6months")
+
+p <- peak_gene_region_barplot_combined(fus_peaks_list_combined, anno)
+p[["plot"]]
+# ggsave(here("analysis", "figures", "final", "barplot_peak_location_combined.png"),
+#        p[["plot"]], width = 8, height = 6, dpi = 300, type = "cairo")
+ggsave(here("analysis", "figures", "final", "barplot_peak_location_combined.pdf"),
+       p[["plot"]], width = 8, height = 6)
+```
+
+We test if the number of exonic peaks in the 12h is significantly different from the unchanged_stability group
+```{r test-sign-peak-location}
+## binomial two sample proportion test
+## exonic peaks in accumulated vs. unchanged genes
+p$df
+## columns = gene sets
+## rows = peak location
+## unchange, up, down
+## exon, 3UTR, 5UTR, intron
+mat <- matrix(c(p$df[p$df$peaks == "unchanged_stability","peak_number"], 
+         p$df[p$df$peaks == "up_12h","peak_number"], 
+         p$df[p$df$peaks == "down_12h","peak_number"]), nrow = 4,  byrow = FALSE)
+colnames(mat) <- c("unchanged_stability", "up_12h", "down_12h")
+rownames(mat) <- unique(p$df$annotation)
+tres <- chisq.test(mat)
+tres
+tres$expected
+tres$observed
+tres$residuals
+
+mat <- matrix(c(p$df[p$df$peaks == "unchanged_6months","peak_number"], 
+         p$df[p$df$peaks == "accumulated","peak_number"]), ncol = 2,  byrow = FALSE)
+colnames(mat) <- c("unchanged_6months", "accumulated")
+rownames(mat) <- unique(p$df$annotation)
+tres <- chisq.test(mat)
+tres
+tres$expected
+tres$observed
+tres$residuals
+
+## exon vs. UTR vs. intron
+mat <- matrix(c(p$df[p$df$peaks == "unchanged_stability","peak_number"], 
+         p$df[p$df$peaks == "up_8h","peak_number"]), nrow = 4, byrow = FALSE)
+mat <- matrix(c(mat[1,], colSums(mat[2:3,]), mat[4,]), ncol = 2, byrow = TRUE)
+colnames(mat) <- c("unchanged_stability", "up_8h")
+rownames(mat) <- c("exon", "UTR", "intron")
+tres <- chisq.test(mat)
+tres
+tres$expected
+tres$observed
+tres$residuals
+
+mat <- matrix(c(p$df[p$df$peaks == "unchanged_stability","peak_number"], 
+         p$df[p$df$peaks == "up_12h","peak_number"], 
+         p$df[p$df$peaks == "down_12h","peak_number"]), nrow = 4, byrow = FALSE)
+mat <- matrix(c(mat[1,], colSums(mat[2:3,]), mat[4,]), ncol = 3, byrow = TRUE)
+colnames(mat) <- c("unchanged_stability", "up_12h", "down_12h")
+rownames(mat) <- c("exon", "UTR", "intron")
+tres <- chisq.test(mat)
+tres
+tres$expected
+tres$observed
+tres$residuals
+
+mat <- matrix(c(p$df[p$df$peaks == "unchanged_6months","peak_number"], 
+         p$df[p$df$peaks == "accumulated","peak_number"]), ncol = 2,  byrow = FALSE)
+mat <- matrix(c(mat[1,], colSums(mat[2:3,]), mat[4,]), ncol = 2, byrow = TRUE)
+colnames(mat) <- c("unchanged_6months", "accumulated")
+rownames(mat) <- c("exon", "UTR", "intron")
+tres <- chisq.test(mat)
+tres
+tres$expected
+tres$observed
+tres$residuals
+```
+
+what is the distribution of exons, introns and UTRs in the expressed genes of SNS at 1month?
+
+```{r RNA-regions-distribution}
+## subset the annotation to expressed RNAs
+anno_length <- lapply(anno[2:5], function(x){
+  x <- x[x$gene_id %in% expr_sns]
+  reduce(x) %>% lengths() %>% sum()
+})
+
+## add to the data frame
+p$df <- rbind(p$df, data.frame(peaks = "size distribution", "annotation" = names(anno_length), 
+           peak_number = unlist(anno_length)) %>% 
+  dplyr::mutate(percentage = peak_number/sum(peak_number)*100))
+  
+g <- ggplot(p$df, aes(x = peaks, y = percentage, fill = annotation)) +
+geom_col(position = "stack") +
+theme_bw() +
+theme(text = element_text(size = 20),  legend.position = "bottom", 
+      legend.direction="horizontal", legend.box = "horizontal",
+      axis.text.x = element_text(angle = 45, hjust = 1))  +
+scale_x_discrete(breaks= c("unchanged_stability", "down_8h", "up_8h", 
+                           "down_12h", "up_12h", "down_24h", "up_24h", 
+                           "unchanged_6months", "decreased", "accumulated",
+                           "size distribution"), 
+                 labels= c("unchanged_stability", "down_8h", "up_8h", 
+                           "down_12h", "up_12h", "down_24h", "up_24h", 
+                           "unchanged_6months", "decreased", "accumulated",
+                           "size distribution"),
+                 limits = c("unchanged_stability", "down_8h", "up_8h", 
+                            "down_12h", "up_12h", "down_24h", "up_24h", 
+                            "unchanged_6months", "decreased", "accumulated",
+                            "size distribution"),
+                 name = "peaks in genes with RNA level change") +
+scale_fill_manual(labels = c("exon", "5' UTR", "3' UTR", "intron"), 
+                  values = c("exon" = "#736EAD", 
+                             "five_prime_utr" = "#F19903",
+                             "three_prime_utr" = "#F3DB3C", 
+                             "intron" = "#018C89")) +
+guides(fill = guide_legend(nrow=1, byrow = TRUE)) 
+g
+ggsave(here("analysis", "figures", "final", "barplot_peak_location_combined_size_distribution.pdf"),
+       g, width = 8, height = 6)
+```
+
+
+
+# FUS binding in all exonic and 3'UTR targets
+
+We separate the genes into exonic targets (majority of peaks is in exons) and 3'UTR targets
+
+```{r barplot-exonic-targets-DE}
+supl_df <- supl %>% dplyr::select(nr_peaks, class, RNAseq_DE, stability) %>% 
+  dplyr::mutate(RNA_change = ifelse(RNAseq_DE != "unchanged", RNAseq_DE, 
+                                    stability)) %>%
+  dplyr::mutate(peak_location = ifelse(stringr::str_detect(class, "exon_"), "exon + other", class)) 
+supl_df %>% head
+supl_df$peak_location %>% table
+supl_df$RNA_change %>% table
+
+supl_df <- supl_df %>% group_by(peak_location, RNA_change) %>%
+  dplyr::summarise(nr_genes = n()) %>% ungroup(RNA_change) %>% 
+  dplyr::mutate(percentage = nr_genes/sum(nr_genes)*100)
+supl_df$RNA_change <- factor(supl_df$RNA_change, 
+                levels = c("up", "increased", "unchanged", "down", "decreased"))
+supl_df
+
+## barplot with the RNA level change per binding location
+g <- ggplot(supl_df %>% dplyr::filter(peak_location != "five_utr"), 
+            aes(x = peak_location, y = percentage, fill = RNA_change)) +
+    geom_col(position = "stack") +
+    theme_bw() +
+    theme(text = element_text(size = 20),  
+          legend.position = "bottom",
+          legend.direction="horizontal", legend.box = "horizontal",
+          axis.text.x = element_text(angle = 45, hjust = 1))  +
+    scale_x_discrete(breaks= c("exon", "exon + other", "three_utr", "intron"), 
+                     labels= c("exon", "exon + other", 
+                               "3' UTR", "intron"),
+                     limits = c("exon", "exon + other", 
+                               "three_utr", "intron"),
+                     name = "FUS binding") +
+    scale_fill_manual(labels = c("up", "increased", "unchanged", "down", "decreased"), 
+                      values = c("up" = "#882255", 
+                                 "increased" = "#B74D82", 
+                                 "unchanged" = "darkgrey",
+                                 "down" = "#117733", 
+                                 "decreased" = "#59B377")) +
+  ylab("percentage of RNAs") +
+      guides(fill = guide_legend(nrow=2, byrow = TRUE))
+g
+ggsave(here("analysis", "figures", "final", "barplot_RNA_change_peak_location_legend_bottom.pdf"),
+       g, width = 5, height = 6)
 ```
 
